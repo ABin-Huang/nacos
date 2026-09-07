@@ -321,6 +321,66 @@ class ClientWorkerTest {
     }
     
     @Test
+    void testPublishConfigWithResponsePreservesErrorCodeFromRpcException() throws NacosException {
+        // Test the real ConfigRpcTransportClient.publishConfigWithResponse() layer:
+        // when requestProxy/RPC throws NacosException carrying an error code (e.g., NO_RIGHT,
+        // CAS conflict), the returned ConfigPublishResponse must preserve that error code
+        // instead of collapsing to -1. This tests the actual RPC-to-result mapping, not a
+        // mocked ClientWorker.publishConfigWithResponse().
+        Properties prop = new Properties();
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        ConfigServerListManager agent = Mockito.mock(ConfigServerListManager.class);
+        
+        final NacosClientProperties nacosClientProperties =
+            NacosClientProperties.PROTOTYPE.derive(prop);
+        ClientWorker clientWorker = new ClientWorker(filter, agent, nacosClientProperties);
+        
+        String dataId = "a";
+        String group = "b";
+        String tenant = "c";
+        String content = "d";
+        String appName = "app";
+        String tag = "tag";
+        String betaIps = "1.1.1.1";
+        String casMd5 = "1111";
+        String type = "properties";
+        
+        // RPC layer throws NacosException with NO_RIGHT error code (simulating server rejection)
+        Mockito.when(rpcClient.request(any(ConfigPublishRequest.class)))
+            .thenThrow(new NacosException(NacosException.NO_RIGHT, "no right for publish"));
+        
+        ConfigPublishResponse response = clientWorker.publishConfigWithResponse(dataId, group,
+            tenant, appName, tag, betaIps, content, null, casMd5, type);
+        
+        // Error code and message must be preserved from the NacosException
+        assertFalse(response.isSuccess());
+        assertEquals(NacosException.NO_RIGHT, response.getErrorCode());
+        assertEquals("no right for publish", response.getMessage());
+    }
+    
+    @Test
+    void testPublishConfigWithResponsePreservesCasConflictErrorCode() throws NacosException {
+        // Verify CAS conflict error code (409) is preserved through the RPC layer
+        Properties prop = new Properties();
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        ConfigServerListManager agent = Mockito.mock(ConfigServerListManager.class);
+        
+        final NacosClientProperties nacosClientProperties =
+            NacosClientProperties.PROTOTYPE.derive(prop);
+        ClientWorker clientWorker = new ClientWorker(filter, agent, nacosClientProperties);
+        
+        Mockito.when(rpcClient.request(any(ConfigPublishRequest.class)))
+            .thenThrow(new NacosException(409, "cas md5 conflict"));
+        
+        ConfigPublishResponse response = clientWorker.publishConfigWithResponse("a", "b", "c",
+            "app", "tag", "1.1.1.1", "content", null, "old-md5", "properties");
+        
+        assertFalse(response.isSuccess());
+        assertEquals(409, response.getErrorCode());
+        assertEquals("cas md5 conflict", response.getMessage());
+    }
+    
+    @Test
     void testRemoveConfig() throws NacosException {
         
         Properties prop = new Properties();

@@ -33,13 +33,16 @@ import com.alibaba.nacos.client.config.impl.ConfigFuzzyWatchContext;
 import com.alibaba.nacos.client.config.impl.ConfigServerListManager;
 import com.alibaba.nacos.client.config.impl.ConfigTransportClient;
 import com.alibaba.nacos.client.config.impl.LocalConfigInfoProcessor;
+import com.alibaba.nacos.client.config.impl.LocalEncryptedDataKeyProcessor;
 import com.alibaba.nacos.client.env.NacosClientProperties;
 import com.alibaba.nacos.common.utils.FuzzyGroupKeyPattern;
+import com.alibaba.nacos.common.utils.MD5Utils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,8 +59,10 @@ import java.util.concurrent.Future;
 
 import static com.alibaba.nacos.api.common.Constants.ALL_PATTERN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 
@@ -880,5 +885,56 @@ class NacosConfigServiceTest {
         Assertions.assertFalse(result.isSuccess());
         assertEquals(500, result.getErrorCode());
         assertEquals("server error", result.getErrorMessage());
+    }
+    
+    @Test
+    void testPlaintextDiskSnapshotAllowsConditionalGet() throws NacosException {
+        // Non-encrypted plaintext disk snapshot CAN be used for conditional GET because MD5
+        // is computed from the captured content and no decryption key is needed.
+        final String dataId = "plaintext-data";
+        final String group = "g";
+        final String tenant = "public";
+        
+        MockedStatic<LocalConfigInfoProcessor> localMock =
+            Mockito.mockStatic(LocalConfigInfoProcessor.class);
+        MockedStatic<LocalEncryptedDataKeyProcessor> keyMock =
+            Mockito.mockStatic(LocalEncryptedDataKeyProcessor.class);
+        try {
+            String plainContent = "plain-text-config-content";
+            localMock.when(() -> LocalConfigInfoProcessor.getSnapshot(any(), eq(dataId),
+                eq(group), eq(tenant))).thenReturn(plainContent);
+            keyMock.when(() -> LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(any(),
+                eq(dataId), eq(group), eq(tenant))).thenReturn(null);
+            
+            ConfigResponse response = new ConfigResponse();
+            response.setContent("server-content");
+            response.setMd5("server-md5");
+            
+            Mockito.lenient().when(mockWoker.getServerConfig(anyString(), anyString(), anyString(),
+                anyLong(), eq(false))).thenReturn(response);
+            Mockito.lenient().when(mockWoker.getServerConfig(anyString(), anyString(), anyString(),
+                anyLong(), eq(false), anyString())).thenReturn(response);
+            Mockito.lenient().when(mockWoker.getServerConfig(anyString(), anyString(), anyString(),
+                anyLong(), eq(false), anyString(), any(ClientWorker.LocalConfigContent.class)))
+                .thenReturn(response);
+            
+            final String config = nacosConfigService.getConfig(dataId, group, 3000);
+            assertEquals("server-content", config);
+            
+            ArgumentCaptor<ClientWorker.LocalConfigContent> localCaptor =
+                ArgumentCaptor.forClass(ClientWorker.LocalConfigContent.class);
+            Mockito.verify(mockWoker, Mockito.times(1)).getServerConfig(eq(dataId), eq(group),
+                eq(tenant), eq(3000L), eq(false), anyString(), localCaptor.capture());
+            
+            ClientWorker.LocalConfigContent local = localCaptor.getValue();
+            assertNotNull(local);
+            // Plaintext disk snapshot: CAN be used for conditional GET
+            assertTrue(local.hasLocalRepresentation(),
+                "Plaintext disk snapshot should be usable for conditional GET");
+            assertEquals(MD5Utils.md5Hex(plainContent, "UTF-8"), local.getMd5());
+        } finally {
+            localMock.close();
+            keyMock.close();
+        }
     }
 }
