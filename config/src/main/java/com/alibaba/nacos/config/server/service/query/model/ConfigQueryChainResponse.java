@@ -73,6 +73,11 @@ public class ConfigQueryChainResponse {
          * Indicates a conflict in the configuration query.
          */
         CONFIG_QUERY_CONFLICT,
+        
+        /**
+         * Indicates that the configuration was not modified (304), content read is skipped.
+         */
+        CONFIG_NOT_MODIFIED,
     }
     
     public String getContent() {

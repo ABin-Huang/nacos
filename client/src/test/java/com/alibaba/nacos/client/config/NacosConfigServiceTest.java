@@ -103,12 +103,15 @@ class NacosConfigServiceTest {
         Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
             eq(false), Mockito.isNull())).thenReturn(response);
         Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
+            eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class)))
+            .thenReturn(response);
+        Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
             eq(false))).thenReturn(response);
         final String config = nacosConfigService.getConfig(dataId, group, timeout);
         assertEquals("aa", config);
         Mockito.verify(mockWoker, Mockito.times(1)).getServerConfig(eq(dataId), eq(group),
             eq(tenant), eq((long) timeout),
-            eq(false));
+            eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class));
         
     }
     
@@ -162,6 +165,9 @@ class NacosConfigServiceTest {
             Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
                 eq(false), Mockito.isNull())).thenThrow(new NacosException());
             Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
+                eq(false), anyString(), any(ClientWorker.LocalConfigContent.class)))
+                .thenThrow(new NacosException());
+            Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
                 eq(false))).thenThrow(new NacosException());
             
             final String config = nacosConfigService.getConfig(dataId, group, timeout);
@@ -193,6 +199,9 @@ class NacosConfigServiceTest {
             Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
                 eq(false), Mockito.isNull())).thenThrow(
                     new NacosException(NacosException.NO_RIGHT, "no right"));
+            Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
+                eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class)))
+                .thenThrow(new NacosException(NacosException.NO_RIGHT, "no right"));
             Mockito.when(mockWoker.getServerConfig(eq(dataId), eq(group), eq(tenant), eq((long) timeout),
                 eq(false))).thenThrow(new NacosException(NacosException.NO_RIGHT, "no right"));
             try {
@@ -594,6 +603,9 @@ class NacosConfigServiceTest {
         Mockito.when(mockWoker.getServerConfig(eq("d"), eq("g"), eq("public"), eq(3000L),
             eq(false), Mockito.isNull())).thenReturn(response);
         Mockito.when(mockWoker.getServerConfig(eq("d"), eq("g"), eq("public"), eq(3000L),
+            eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class)))
+            .thenReturn(response);
+        Mockito.when(mockWoker.getServerConfig(eq("d"), eq("g"), eq("public"), eq(3000L),
             eq(false))).thenReturn(response);
         com.alibaba.nacos.api.config.ConfigQueryResult result =
             nacosConfigService.getConfigWithResult("d", "g", 3000);
@@ -627,6 +639,9 @@ class NacosConfigServiceTest {
                 eq(3000L), eq(false), Mockito.isNull())).thenThrow(
                     new NacosException(500, "down"));
             Mockito.when(mockWoker.getServerConfig(eq("dsnap"), eq("g"), eq("public"),
+                eq(3000L), eq(false), anyString(), any(ClientWorker.LocalConfigContent.class)))
+                .thenThrow(new NacosException(500, "down"));
+            Mockito.when(mockWoker.getServerConfig(eq("dsnap"), eq("g"), eq("public"),
                 eq(3000L), eq(false))).thenThrow(new NacosException(500, "down"));
             com.alibaba.nacos.api.config.ConfigQueryResult result =
                 nacosConfigService.getConfigWithResult("dsnap", "g", 3000);
@@ -643,6 +658,9 @@ class NacosConfigServiceTest {
             Mockito.when(mockWoker.getServerConfig(eq("dnr"), eq("g"), eq("public"),
                 eq(3000L), eq(false), Mockito.isNull())).thenThrow(
                     new NacosException(NacosException.NO_RIGHT, "no right"));
+            Mockito.when(mockWoker.getServerConfig(eq("dnr"), eq("g"), eq("public"),
+                eq(3000L), eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class)))
+                .thenThrow(new NacosException(NacosException.NO_RIGHT, "no right"));
             Mockito.when(mockWoker.getServerConfig(eq("dnr"), eq("g"), eq("public"),
                 eq(3000L), eq(false))).thenThrow(
                     new NacosException(NacosException.NO_RIGHT, "no right"));
@@ -712,6 +730,9 @@ class NacosConfigServiceTest {
         response.setEncryptedDataKey("request-ek");
         Mockito.when(mockWoker.getServerConfig(eq("req-data"), eq("req-group"), eq("public"),
             eq(3000L), eq(false), Mockito.isNull())).thenReturn(response);
+        Mockito.when(mockWoker.getServerConfig(eq("req-data"), eq("req-group"), eq("public"),
+            eq(3000L), eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class)))
+            .thenReturn(response);
         
         GetConfigRequest request = GetConfigRequest.builder()
             .dataId("req-data")

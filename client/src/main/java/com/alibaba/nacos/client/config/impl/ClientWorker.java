@@ -575,6 +575,46 @@ public class ClientWorker implements Closeable {
         return cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
     }
     
+    /**
+     * Holds a consistent local content/MD5/encryptedDataKey pair captured before sending
+     * a conditional GET request. On a 304 response, this retained content is reused directly
+     * instead of re-reading a potentially different snapshot/CacheData version.
+     */
+    public static final class LocalConfigContent {
+        
+        private final String content;
+        
+        private final String md5;
+        
+        private final String encryptedDataKey;
+        
+        private final boolean hasLocalRepresentation;
+        
+        public LocalConfigContent(String content, String md5, String encryptedDataKey,
+                boolean hasLocalRepresentation) {
+            this.content = content;
+            this.md5 = md5;
+            this.encryptedDataKey = encryptedDataKey;
+            this.hasLocalRepresentation = hasLocalRepresentation;
+        }
+        
+        public String getContent() {
+            return content;
+        }
+        
+        public String getMd5() {
+            return md5;
+        }
+        
+        public String getEncryptedDataKey() {
+            return encryptedDataKey;
+        }
+        
+        public boolean hasLocalRepresentation() {
+            return hasLocalRepresentation;
+        }
+    }
+    
     public ConfigResponse getServerConfig(String dataId, String group, String tenant,
         long readTimeout, boolean notify)
         throws NacosException {
@@ -608,6 +648,30 @@ public class ClientWorker implements Closeable {
             group = Constants.DEFAULT_GROUP;
         }
         return agent.queryConfig(dataId, group, tenant, readTimeout, notify, localMd5);
+    }
+    
+    /**
+     * Get server config with 304 conditional GET and consistent local content retention.
+     *
+     * @param dataId       dataId
+     * @param group        group
+     * @param tenant       tenant
+     * @param readTimeout  read timeout in milliseconds
+     * @param notify       whether to notify
+     * @param localMd5     local cached MD5 for 304 conditional GET, may be null
+     * @param localContent consistent local content/MD5 pair for 304 restoration
+     * @return config response
+     * @throws NacosException nacos exception
+     * @since 3.3.0
+     */
+    public ConfigResponse getServerConfig(String dataId, String group, String tenant,
+        long readTimeout, boolean notify, String localMd5, LocalConfigContent localContent)
+        throws NacosException {
+        if (StringUtils.isBlank(group)) {
+            group = Constants.DEFAULT_GROUP;
+        }
+        return agent.queryConfig(dataId, group, tenant, readTimeout, notify, localMd5,
+            localContent);
     }
     
     private String blank2defaultGroup(String group) {
@@ -1404,6 +1468,36 @@ public class ClientWorker implements Closeable {
             
         }
         
+        /**
+         * Query config with 304 conditional GET and consistent local content retention.
+         *
+         * @param dataId       dataId
+         * @param group        group
+         * @param tenant       tenant
+         * @param readTimeouts read timeout in milliseconds
+         * @param notify       whether to notify
+         * @param localMd5     local cached MD5 for 304 conditional GET
+         * @param localContent consistent local content/MD5 pair for 304 restoration
+         * @return config response
+         * @throws NacosException nacos exception
+         * @since 3.3.0
+         */
+        public ConfigResponse queryConfig(String dataId, String group, String tenant,
+            long readTimeouts, boolean notify, String localMd5, LocalConfigContent localContent)
+            throws NacosException {
+            RpcClient rpcClient = getOneRunningClient();
+            if (notify) {
+                CacheData cacheData =
+                    cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
+                if (cacheData != null) {
+                    rpcClient = ensureRpcClient(String.valueOf(cacheData.getTaskId()));
+                }
+            }
+            
+            return queryConfigInner(rpcClient, dataId, group, tenant, readTimeouts, notify,
+                localMd5, localContent);
+        }
+        
         ConfigResponse queryConfigInner(RpcClient rpcClient, String dataId, String group,
             String tenant,
             long readTimeouts, boolean notify) throws NacosException {
@@ -1414,6 +1508,22 @@ public class ClientWorker implements Closeable {
         ConfigResponse queryConfigInner(RpcClient rpcClient, String dataId, String group,
             String tenant,
             long readTimeouts, boolean notify, String localMd5) throws NacosException {
+            return queryConfigInner(rpcClient, dataId, group, tenant, readTimeouts, notify,
+                localMd5, null);
+        }
+        
+        /**
+         * Query config inner with 304 conditional GET and consistent local content retention.
+         *
+         * <p>On a 304 response, the retained localContent is reused directly instead of
+         * re-reading a potentially different snapshot/CacheData version, ensuring the content
+         * and MD5 always match. The content is the original pre-decryption content and will
+         * pass through the response filter/decryption chain in the caller.</p>
+         */
+        ConfigResponse queryConfigInner(RpcClient rpcClient, String dataId, String group,
+            String tenant,
+            long readTimeouts, boolean notify, String localMd5,
+            LocalConfigContent localContent) throws NacosException {
             ConfigQueryRequest request = ConfigQueryRequest.build(dataId, group, tenant);
             request.putHeader(NOTIFY_HEADER, String.valueOf(notify));
             if (StringUtils.isNotBlank(localMd5)) {
@@ -1445,38 +1555,30 @@ public class ClientWorker implements Closeable {
                 configResponse.setEncryptedDataKey(encryptedDataKey);
                 return configResponse;
             } else if (response.getErrorCode() == ConfigQueryResponse.CONFIG_NOT_MODIFIED) {
-                // 304 Not-Modified: restore content from local cache (snapshot or CacheData)
+                // 304 Not-Modified: reuse the retained content captured before sending the request.
+                // This ensures the content and MD5 always match, even if the local cache is
+                // updated concurrently between sending the request and receiving the 304.
                 LOGGER.info(
-                    "[{}] [get-config] config not modified (304), use local cache, dataId={}, group={}, tenant={}",
+                    "[{}] [get-config] config not modified (304), reuse retained local content, dataId={}, group={}, tenant={}",
                     this.getName(), dataId, group, tenant);
                 
-                String localContent =
-                    LocalConfigInfoProcessor.getSnapshot(this.getName(), dataId, group, tenant);
+                String retainedContent =
+                    localContent != null ? localContent.getContent() : null;
+                String retainedEncryptedDataKey =
+                    localContent != null ? localContent.getEncryptedDataKey() : null;
                 
-                // Fallback: if snapshot is empty, try to restore from in-memory CacheData
-                if (StringUtils.isBlank(localContent)) {
-                    CacheData cacheData =
-                        cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
-                    if (cacheData != null && StringUtils.isNotBlank(cacheData.getContent())) {
-                        localContent = cacheData.getContent();
-                        LOGGER.info(
-                            "[{}] [get-config] 304 restored content from CacheData, dataId={}, group={}, tenant={}",
-                            this.getName(), dataId, group, tenant);
-                    }
-                }
-                
-                // If still no local content, fall back to unconditional query
-                if (StringUtils.isBlank(localContent)) {
+                // If no retained content available, fall back to unconditional query
+                if (StringUtils.isBlank(retainedContent)) {
                     LOGGER.warn(
-                        "[{}] [get-config] 304 but no local content available, retrying unconditionally, dataId={}, group={}, tenant={}",
+                        "[{}] [get-config] 304 but no retained content available, retrying unconditionally, dataId={}, group={}, tenant={}",
                         this.getName(), dataId, group, tenant);
                     return queryConfigInner(rpcClient, dataId, group, tenant, readTimeouts, notify,
                         null);
                 }
                 
-                configResponse.setContent(localContent);
+                configResponse.setContent(retainedContent);
                 configResponse.setMd5(response.getMd5());
-                // Restore configType from 304 response metadata (server now returns it)
+                // Restore configType from 304 response metadata
                 String configType304;
                 if (StringUtils.isNotBlank(response.getContentType())) {
                     configType304 = response.getContentType();
@@ -1484,10 +1586,15 @@ public class ClientWorker implements Closeable {
                     configType304 = ConfigType.TEXT.getType();
                 }
                 configResponse.setConfigType(configType304);
-                String localEncryptedDataKey =
-                    LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(agent.getName(),
-                        dataId, group, tenant);
-                configResponse.setEncryptedDataKey(localEncryptedDataKey);
+                // Use retained encryptedDataKey if available, otherwise fall back to snapshot
+                if (StringUtils.isNotBlank(retainedEncryptedDataKey)) {
+                    configResponse.setEncryptedDataKey(retainedEncryptedDataKey);
+                } else {
+                    String localEncryptedDataKey =
+                        LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(agent.getName(),
+                            dataId, group, tenant);
+                    configResponse.setEncryptedDataKey(localEncryptedDataKey);
+                }
                 return configResponse;
             } else if (response.getErrorCode() == ConfigQueryResponse.CONFIG_NOT_FOUND) {
                 LocalConfigInfoProcessor.saveSnapshot(this.getName(), dataId, group, tenant, null);

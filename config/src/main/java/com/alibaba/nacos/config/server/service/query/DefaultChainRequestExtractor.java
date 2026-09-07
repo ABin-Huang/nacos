@@ -68,6 +68,7 @@ public class DefaultChainRequestExtractor implements ConfigQueryChainRequestExtr
         chainRequest.setGroup(group);
         chainRequest.setTenant(tenant);
         chainRequest.setTag(tag);
+        chainRequest.setLocalMd5(request.getParameter("localMd5"));
         chainRequest.setAppLabels(appLabels);
         
         return chainRequest;
@@ -90,6 +91,7 @@ public class DefaultChainRequestExtractor implements ConfigQueryChainRequestExtr
         chainRequest.setGroup(request.getGroup());
         chainRequest.setTenant(request.getTenant());
         chainRequest.setTag(request.getTag());
+        chainRequest.setLocalMd5(request.getLocalMd5());
         chainRequest.setAppLabels(appLabels);
         
         return chainRequest;

@@ -104,7 +104,11 @@ public class NacosConfigService implements ConfigService {
     
     @Override
     public String getConfig(String dataId, String group, long timeoutMs) throws NacosException {
-        return getConfigInner(namespace, dataId, group, timeoutMs);
+        // Route legacy API through the new conditional-GET implementation to benefit from 304.
+        ClientWorker.LocalConfigContent localContent = resolveLocalConfigContent(dataId, group);
+        ConfigResponse response = getConfigInnerWithResponse(namespace, dataId, group, timeoutMs,
+            localContent);
+        return response.getContent();
     }
     
     @Override
@@ -112,15 +116,19 @@ public class NacosConfigService implements ConfigService {
         String dataId = request.getDataId();
         String group = request.getGroup();
         long timeoutMs = request.getTimeoutMs();
-        String localMd5 = request.getLocalMd5();
         
-        // If localMd5 is not explicitly provided, try to compute it from local snapshot
-        if (StringUtils.isBlank(localMd5)) {
-            localMd5 = resolveLocalMd5(dataId, group);
+        // Resolve a consistent local content/MD5 pair before sending the request.
+        // If the caller explicitly provides a localMd5, we still need the matching content
+        // to restore on 304; otherwise resolve from local cache/snapshot.
+        ClientWorker.LocalConfigContent localContent;
+        if (StringUtils.isNotBlank(request.getLocalMd5())) {
+            localContent = resolveLocalConfigContentWithMd5(dataId, group, request.getLocalMd5());
+        } else {
+            localContent = resolveLocalConfigContent(dataId, group);
         }
         
         ConfigResponse response = getConfigInnerWithResponse(namespace, dataId, group, timeoutMs,
-            localMd5);
+            localContent);
         
         ConfigQueryResult result = new ConfigQueryResult();
         result.setContent(response.getContent());
@@ -131,39 +139,63 @@ public class NacosConfigService implements ConfigService {
     }
     
     /**
-     * Resolve local MD5 from snapshot or cache for 304 conditional GET.
+     * Resolve a consistent local content/MD5 pair from in-memory CacheData or disk snapshot.
      *
-     * <p>First checks the in-memory CacheData (if the config is being listened to),
-     * then falls back to the local snapshot file.</p>
+     * <p>The content and MD5 are captured from the same source atomically to ensure they match.
+     * If no local representation exists, returns a placeholder with hasLocalRepresentation=false,
+     * and the query will be sent without localMd5.</p>
      *
      * @param dataId dataId
      * @param group  group
-     * @return local MD5, or null if no local cache exists
+     * @return consistent local content/MD5 pair
      */
-    private String resolveLocalMd5(String dataId, String group) {
+    private ClientWorker.LocalConfigContent resolveLocalConfigContent(String dataId, String group) {
         group = blank2defaultGroup(group);
-        // Try in-memory cache first
+        // Try in-memory CacheData first (content + md5 from same source for consistency)
         try {
             com.alibaba.nacos.client.config.impl.CacheData cacheData =
                 worker.getCache(dataId, group, namespace);
-            if (cacheData != null && StringUtils.isNotBlank(cacheData.getMd5())) {
-                return cacheData.getMd5();
+            if (cacheData != null && StringUtils.isNotBlank(cacheData.getContent())
+                && StringUtils.isNotBlank(cacheData.getMd5())) {
+                return new ClientWorker.LocalConfigContent(cacheData.getContent(),
+                    cacheData.getMd5(),
+                    cacheData.getEncryptedDataKey(), true);
             }
         } catch (Exception e) {
             // ignore, fall through to snapshot
         }
-        // Try local snapshot
+        // Try local snapshot (compute MD5 from the same content to ensure consistency)
         try {
             String snapshotContent =
                 LocalConfigInfoProcessor.getSnapshot(worker.getAgentName(), dataId, group,
                     namespace);
             if (StringUtils.isNotBlank(snapshotContent)) {
-                return MD5Utils.md5Hex(snapshotContent, Constants.ENCODE);
+                String snapshotMd5 = MD5Utils.md5Hex(snapshotContent, Constants.ENCODE);
+                String snapshotEncryptedDataKey =
+                    LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(worker.getAgentName(),
+                        dataId, group, namespace);
+                return new ClientWorker.LocalConfigContent(snapshotContent, snapshotMd5,
+                    snapshotEncryptedDataKey, true);
             }
         } catch (Exception e) {
             // ignore
         }
-        return null;
+        return new ClientWorker.LocalConfigContent(null, null, null, false);
+    }
+    
+    /**
+     * Resolve local content when the caller explicitly provides a localMd5.
+     * Attempts to find matching local content; if none matches, returns no local representation
+     * so the query is sent without conditional MD5 (to avoid a 304 with no restorable content).
+     */
+    private ClientWorker.LocalConfigContent resolveLocalConfigContentWithMd5(String dataId,
+            String group, String explicitMd5) {
+        ClientWorker.LocalConfigContent local = resolveLocalConfigContent(dataId, group);
+        if (local.hasLocalRepresentation() && explicitMd5.equals(local.getMd5())) {
+            return local;
+        }
+        // No matching local content for the explicit MD5; query unconditionally.
+        return new ClientWorker.LocalConfigContent(null, explicitMd5, null, false);
     }
     
     @Override
@@ -420,26 +452,21 @@ public class NacosConfigService implements ConfigService {
         return (StringUtils.isBlank(group)) ? Constants.DEFAULT_GROUP : group.trim();
     }
     
-    private ConfigResponse getConfigInnerWithResponse(String tenant, String dataId, String group,
-        long timeoutMs)
-        throws NacosException {
-        return getConfigInnerWithResponse(tenant, dataId, group, timeoutMs, null);
-    }
-    
     /**
-     * Get config inner with response, supporting 304 conditional GET via localMd5.
+     * Get config inner with response, supporting 304 conditional GET via a consistent
+     * local content/MD5 pair.
      *
-     * @param tenant    tenant
-     * @param dataId    dataId
-     * @param group     group
-     * @param timeoutMs timeout in milliseconds
-     * @param localMd5  local cached MD5 for 304 conditional GET
+     * @param tenant       tenant
+     * @param dataId       dataId
+     * @param group        group
+     * @param timeoutMs    timeout in milliseconds
+     * @param localContent consistent local content/MD5 pair for 304 conditional GET
      * @return config response
      * @throws NacosException nacos exception
      * @since 3.3.0
      */
     private ConfigResponse getConfigInnerWithResponse(String tenant, String dataId, String group,
-        long timeoutMs, String localMd5)
+        long timeoutMs, ClientWorker.LocalConfigContent localContent)
         throws NacosException {
         group = blank2defaultGroup(group);
         ParamUtils.checkKeyParam(dataId, group);
@@ -467,8 +494,12 @@ public class NacosConfigService implements ConfigService {
         }
         
         try {
+            // Only send conditional MD5 when we have a matching local representation to restore.
+            String conditionalMd5 =
+                localContent.hasLocalRepresentation() ? localContent.getMd5() : null;
             ConfigResponse response =
-                worker.getServerConfig(dataId, group, tenant, timeoutMs, false, localMd5);
+                worker.getServerConfig(dataId, group, tenant, timeoutMs, false, conditionalMd5,
+                    localContent);
             cr.setContent(response.getContent());
             cr.setMd5(response.getMd5());
             cr.setEncryptedDataKey(response.getEncryptedDataKey());
@@ -505,7 +536,10 @@ public class NacosConfigService implements ConfigService {
     @Override
     public ConfigQueryResult getConfigWithResult(String dataId, String group, long timeoutMs)
         throws NacosException {
-        ConfigResponse response = getConfigInnerWithResponse(namespace, dataId, group, timeoutMs);
+        // Route legacy API through the new conditional-GET implementation.
+        ClientWorker.LocalConfigContent localContent = resolveLocalConfigContent(dataId, group);
+        ConfigResponse response = getConfigInnerWithResponse(namespace, dataId, group, timeoutMs,
+            localContent);
         ConfigQueryResult result = new ConfigQueryResult();
         result.setContent(response.getContent());
         result.setMd5(response.getMd5());

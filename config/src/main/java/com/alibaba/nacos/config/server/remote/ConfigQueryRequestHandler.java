@@ -99,6 +99,21 @@ public class ConfigQueryRequestHandler
                     chainResponse.getMessage());
             }
             
+            // 304 Not-Modified: FormalHandler already skipped content read when MD5 matched.
+            // Return 304 directly with metadata, equivalent to the post-read comparison path.
+            if (chainResponse.getStatus()
+                == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_MODIFIED) {
+                String pullEvent = resolvePullEventType(chainResponse, request.getTag());
+                LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, clientIp,
+                    chainResponse.getMd5(), TimeUtils.getCurrentTimeStr());
+                final long delayed304 = System.currentTimeMillis() - chainResponse.getLastModified();
+                ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp,
+                    chainResponse.getLastModified(), pullEvent,
+                    ConfigTraceService.PULL_TYPE_OK, delayed304, clientIp, notify, "grpc");
+                return buildNotModifiedResponse(chainResponse.getMd5(),
+                    chainResponse.getConfigType(), chainResponse.getLastModified());
+            }
+            
             // 304 Not-Modified: if client provides localMd5 and it matches server md5,
             // return 304 without content to save network bandwidth and server overhead.
             String localMd5 = request.getLocalMd5();
