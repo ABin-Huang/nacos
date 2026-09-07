@@ -381,6 +381,56 @@ class ClientWorkerTest {
     }
     
     @Test
+    void testAddTenantListenersWithContentUsesAtomicUpdate() throws Exception {
+        // Test the real ClientWorker.addTenantListenersWithContent() production path on an
+        // existing cache. Verify that the method uses atomic setConfigContentAndKey() (which
+        // sets verifiedPair=true) rather than two separate setters. This test would fail if
+        // the production path reverted to separate setEncryptedDataKey() + setContent() calls.
+        Properties prop = new Properties();
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        ConfigServerListManager agent = Mockito.mock(ConfigServerListManager.class);
+        
+        final NacosClientProperties nacosClientProperties =
+            NacosClientProperties.PROTOTYPE.derive(prop);
+        ClientWorker clientWorker = new ClientWorker(filter, agent, nacosClientProperties);
+        
+        String dataId = "test-data";
+        String group = "test-group";
+        String content = "listener-content-v1";
+        String encryptedDataKey = "listener-key-v1";
+        
+        // First register the cache (existing cache scenario)
+        CacheData cacheData = clientWorker.addCacheDataIfAbsent(dataId, group);
+        assertNotNull(cacheData);
+        
+        // Pre-populate with an initial verified pair
+        cacheData.setConfigContentAndKey("initial-content", "initial-key");
+        
+        // Call the real production method with an empty listener list
+        clientWorker.addTenantListenersWithContent(dataId, group, content, encryptedDataKey,
+            new ArrayList<>());
+        
+        // Verify the cache data was updated atomically
+        CacheData updatedCache = clientWorker.getCache(dataId, group);
+        assertNotNull(updatedCache);
+        assertEquals(content, updatedCache.getContent());
+        assertEquals(encryptedDataKey, updatedCache.getEncryptedDataKey());
+        
+        // Verify verifiedPair is true (proves setConfigContentAndKey was used, not separate setters)
+        Field verifiedPairField = CacheData.class.getDeclaredField("verifiedPair");
+        verifiedPairField.setAccessible(true);
+        boolean verifiedPair = (boolean) verifiedPairField.get(updatedCache);
+        assertTrue(verifiedPair,
+            "addTenantListenersWithContent must use atomic setConfigContentAndKey (verifiedPair=true)");
+        
+        // Verify getConsistentSnapshot returns the consistent pair
+        CacheData.ConfigSnapshot snapshot = updatedCache.getConsistentSnapshot();
+        assertNotNull(snapshot);
+        assertEquals(content, snapshot.getContent());
+        assertEquals(encryptedDataKey, snapshot.getEncryptedDataKey());
+    }
+    
+    @Test
     void testRemoveConfig() throws NacosException {
         
         Properties prop = new Properties();

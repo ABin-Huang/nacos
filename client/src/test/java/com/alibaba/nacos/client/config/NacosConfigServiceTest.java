@@ -50,6 +50,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Properties;
@@ -59,7 +60,9 @@ import java.util.concurrent.Future;
 
 import static com.alibaba.nacos.api.common.Constants.ALL_PATTERN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -932,6 +935,91 @@ class NacosConfigServiceTest {
             assertTrue(local.hasLocalRepresentation(),
                 "Plaintext disk snapshot should be usable for conditional GET");
             assertEquals(MD5Utils.md5Hex(plainContent, "UTF-8"), local.getMd5());
+        } finally {
+            localMock.close();
+            keyMock.close();
+        }
+    }
+    
+    @Test
+    void testCipherDataIdWithMissingKeySkipsConditionalGet() throws Exception {
+        // "cipher-" is a dataId prefix (per EncryptionHandler.checkCipher()), not a ciphertext-
+        // content prefix. A cipher-* dataId always requires a decryption key, even when the key
+        // file is missing and the content does not start with "cipher-". This test verifies that
+        // such a configuration skips conditional GET (hasLocalRepresentation=false).
+        final String dataId = "cipher-aes-my-config";
+        final String group = "g";
+        final String tenant = "public";
+        
+        MockedStatic<LocalConfigInfoProcessor> localMock =
+            Mockito.mockStatic(LocalConfigInfoProcessor.class);
+        MockedStatic<LocalEncryptedDataKeyProcessor> keyMock =
+            Mockito.mockStatic(LocalEncryptedDataKeyProcessor.class);
+        try {
+            // Content does NOT start with "cipher-" (normal ciphertext after encryption)
+            String cipherContent = "encrypted-base64-content-xyz123";
+            localMock.when(() -> LocalConfigInfoProcessor.getSnapshot(any(), eq(dataId),
+                eq(group), eq(tenant))).thenReturn(cipherContent);
+            // Key file is missing
+            keyMock.when(() -> LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(any(),
+                eq(dataId), eq(group), eq(tenant))).thenReturn(null);
+            
+            // Use reflection to call the private resolveLocalConfigContent method directly
+            Method resolveMethod = NacosConfigService.class.getDeclaredMethod(
+                "resolveLocalConfigContent", String.class, String.class);
+            resolveMethod.setAccessible(true);
+            Object localContent = resolveMethod.invoke(nacosConfigService, dataId, group);
+            
+            assertNotNull(localContent);
+            
+            // Verify hasLocalRepresentation is false (conditional GET skipped)
+            Method hasLocalRepMethod = localContent.getClass().getDeclaredMethod(
+                "hasLocalRepresentation");
+            hasLocalRepMethod.setAccessible(true);
+            boolean hasLocalRep = (boolean) hasLocalRepMethod.invoke(localContent);
+            assertFalse(hasLocalRep,
+                "cipher-* dataId with missing key must skip conditional GET");
+            
+            // Verify md5 is null
+            Method getMd5Method = localContent.getClass().getDeclaredMethod("getMd5");
+            getMd5Method.setAccessible(true);
+            Object md5 = getMd5Method.invoke(localContent);
+            assertNull(md5, "MD5 must be null when conditional GET is skipped");
+        } finally {
+            localMock.close();
+            keyMock.close();
+        }
+    }
+    
+    @Test
+    void testCipherDataIdWithKeySkipsConditionalGet() throws Exception {
+        // A cipher-* dataId with both ciphertext content and key file present must still skip
+        // conditional GET because the disk content/key pairing cannot be proven (separate writes).
+        final String dataId = "cipher-aes-config-with-key";
+        final String group = "g";
+        final String tenant = "public";
+        
+        MockedStatic<LocalConfigInfoProcessor> localMock =
+            Mockito.mockStatic(LocalConfigInfoProcessor.class);
+        MockedStatic<LocalEncryptedDataKeyProcessor> keyMock =
+            Mockito.mockStatic(LocalEncryptedDataKeyProcessor.class);
+        try {
+            localMock.when(() -> LocalConfigInfoProcessor.getSnapshot(any(), eq(dataId),
+                eq(group), eq(tenant))).thenReturn("encrypted-content");
+            keyMock.when(() -> LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(any(),
+                eq(dataId), eq(group), eq(tenant))).thenReturn("disk-encryption-key");
+            
+            Method resolveMethod = NacosConfigService.class.getDeclaredMethod(
+                "resolveLocalConfigContent", String.class, String.class);
+            resolveMethod.setAccessible(true);
+            Object localContent = resolveMethod.invoke(nacosConfigService, dataId, group);
+            
+            Method hasLocalRepMethod = localContent.getClass().getDeclaredMethod(
+                "hasLocalRepresentation");
+            hasLocalRepMethod.setAccessible(true);
+            boolean hasLocalRep = (boolean) hasLocalRepMethod.invoke(localContent);
+            assertFalse(hasLocalRep,
+                "cipher-* dataId with disk key must still skip conditional GET (unverified pairing)");
         } finally {
             localMock.close();
             keyMock.close();
