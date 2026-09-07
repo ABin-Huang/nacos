@@ -151,6 +151,15 @@ public class CacheData {
     private volatile String encryptedDataKey;
     
     /**
+     * Whether the current content/md5/encryptedDataKey tuple has been verified as a paired
+     * set from a full server response. Disk-loaded data (initialization or failover) is not
+     * verified because content and key are read from separate files and may not belong to the
+     * same version. Only verified pairs should be used for conditional GET (304) to avoid
+     * restoring ciphertext with a missing/wrong decryption key.
+     */
+    private volatile boolean verifiedPair = false;
+    
+    /**
      * Lock for atomic content/md5/encryptedDataKey updates and consistent snapshot reads.
      * All three fields must be updated and read under this lock to prevent mixed-version
      * reads (e.g., content A with md5/key from version B).
@@ -224,6 +233,9 @@ public class CacheData {
             this.encryptedDataKey = encryptedDataKey;
             this.content = content;
             this.md5 = getMd5String(this.content);
+            // Full server response supplies a paired content/key tuple; mark as verified
+            // so it can be used for conditional GET (304).
+            this.verifiedPair = true;
         }
     }
     
@@ -232,12 +244,18 @@ public class CacheData {
      * All three fields are read under the same lock used by updates, ensuring they belong
      * to the same version.
      *
-     * @return consistent snapshot, or null if content is blank
+     * <p>Only returns a snapshot when {@link #verifiedPair} is true, meaning the tuple came
+     * from a full server response with a proven paired content/key. Disk-loaded data
+     * (initialization or failover) is not verified because content and key are read from
+     * separate files and may not belong to the same version; using it for conditional GET
+     * could restore ciphertext with a missing or wrong decryption key.</p>
+     *
+     * @return consistent snapshot, or null if content is blank or pair is not verified
      * @since 3.3.0
      */
     public ConfigSnapshot getConsistentSnapshot() {
         synchronized (configLock) {
-            if (StringUtils.isBlank(content)) {
+            if (StringUtils.isBlank(content) || !verifiedPair) {
                 return null;
             }
             return new ConfigSnapshot(content, md5, encryptedDataKey);

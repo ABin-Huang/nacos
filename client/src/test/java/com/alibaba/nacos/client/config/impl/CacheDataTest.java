@@ -315,8 +315,28 @@ class CacheDataTest {
         // Content is null by default
         assertNull(cacheData.getConsistentSnapshot());
         
-        cacheData.setContent("");
+        cacheData.setConfigContentAndKey("", null);
         assertNull(cacheData.getConsistentSnapshot());
+    }
+    
+    @Test
+    void testGetConsistentSnapshotReturnsNullWhenNotVerified() {
+        // Disk-loaded data (setContent alone, without setConfigContentAndKey) is not verified
+        // because content and key may come from separate files. getConsistentSnapshot must
+        // return null to prevent using an unpaired ciphertext/key for conditional GET.
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        cacheData.setContent("disk-loaded-content");
+        cacheData.setEncryptedDataKey("disk-loaded-key");
+        
+        // Not verified: separate setContent/setEncryptedDataKey calls don't mark verifiedPair
+        assertNull(cacheData.getConsistentSnapshot());
+        
+        // After a full server response via setConfigContentAndKey, it becomes verified
+        cacheData.setConfigContentAndKey("server-content", "server-key");
+        CacheData.ConfigSnapshot snapshot = cacheData.getConsistentSnapshot();
+        assertEquals("server-content", snapshot.getContent());
+        assertEquals("server-key", snapshot.getEncryptedDataKey());
     }
     
     @Test
@@ -324,7 +344,8 @@ class CacheDataTest {
         ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
         CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
         String content = "test-content-for-snapshot";
-        cacheData.setContent(content);
+        // Use setConfigContentAndKey to mark as verified (simulating full server response)
+        cacheData.setConfigContentAndKey(content, null);
         
         CacheData.ConfigSnapshot snapshot = cacheData.getConsistentSnapshot();
         assertEquals(content, snapshot.getContent());
@@ -356,7 +377,8 @@ class CacheDataTest {
     void testGetConsistentSnapshotUnderConcurrentUpdate() throws InterruptedException {
         ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
         CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
-        cacheData.setContent("initial");
+        // Initialize with verified pair via setConfigContentAndKey
+        cacheData.setConfigContentAndKey("initial", null);
         
         final int iterations = 500;
         final AtomicReference<String> failure = new AtomicReference<>(null);

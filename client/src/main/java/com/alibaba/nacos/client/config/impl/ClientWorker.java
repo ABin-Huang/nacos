@@ -233,8 +233,9 @@ public class ClientWorker implements Closeable {
         String tenant = agent.getTenant();
         CacheData cache = addCacheDataIfAbsent(dataId, group, tenant);
         synchronized (cache) {
-            cache.setEncryptedDataKey(encryptedDataKey);
-            cache.setContent(content);
+            // Atomically set content/md5/encryptedDataKey as one consistent version
+            // to prevent mixed-version reads by concurrent getConfig calls.
+            cache.setConfigContentAndKey(content, encryptedDataKey);
             for (Listener listener : listeners) {
                 cache.addListener(listener);
             }
@@ -509,8 +510,9 @@ public class ClientWorker implements Closeable {
                 if (enableRemoteSyncConfig) {
                     ConfigResponse response =
                         getServerConfig(dataId, group, tenant, requestTimeout, false);
-                    cache.setEncryptedDataKey(response.getEncryptedDataKey());
-                    cache.setContent(response.getContent());
+                    // Atomically set content/md5/encryptedDataKey as one consistent version
+                    cache.setConfigContentAndKey(response.getContent(),
+                        response.getEncryptedDataKey());
                 }
             }
             
