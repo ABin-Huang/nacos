@@ -141,9 +141,15 @@ public class NacosConfigService implements ConfigService {
     /**
      * Resolve a consistent local content/MD5 pair from in-memory CacheData or disk snapshot.
      *
-     * <p>The content and MD5 are captured from the same source atomically to ensure they match.
-     * If no local representation exists, returns a placeholder with hasLocalRepresentation=false,
-     * and the query will be sent without localMd5.</p>
+     * <p>For in-memory CacheData, uses {@link CacheData#getConsistentSnapshot()} which reads
+     * content/md5/encryptedDataKey under the same lock used by updates, guaranteeing they
+     * belong to the same version.</p>
+     *
+     * <p>For disk snapshots, content and encryptedDataKey are written separately. For non-encrypted
+     * configs (no key), MD5 is computed from the captured content so content/MD5 consistency is
+     * guaranteed. For encrypted configs with a non-blank key, the key may belong to a different
+     * version than the content, so this representation is NOT used for conditional GET and a full
+     * response is fetched instead.</p>
      *
      * @param dataId dataId
      * @param group  group
@@ -151,20 +157,25 @@ public class NacosConfigService implements ConfigService {
      */
     private ClientWorker.LocalConfigContent resolveLocalConfigContent(String dataId, String group) {
         group = blank2defaultGroup(group);
-        // Try in-memory CacheData first (content + md5 from same source for consistency)
+        // Try in-memory CacheData first: getConsistentSnapshot() reads all three fields under
+        // the same update lock, guaranteeing version consistency.
         try {
             com.alibaba.nacos.client.config.impl.CacheData cacheData =
                 worker.getCache(dataId, group, namespace);
-            if (cacheData != null && StringUtils.isNotBlank(cacheData.getContent())
-                && StringUtils.isNotBlank(cacheData.getMd5())) {
-                return new ClientWorker.LocalConfigContent(cacheData.getContent(),
-                    cacheData.getMd5(),
-                    cacheData.getEncryptedDataKey(), true);
+            if (cacheData != null) {
+                com.alibaba.nacos.client.config.impl.CacheData.ConfigSnapshot snapshot =
+                    cacheData.getConsistentSnapshot();
+                if (snapshot != null && StringUtils.isNotBlank(snapshot.getMd5())) {
+                    return new ClientWorker.LocalConfigContent(snapshot.getContent(),
+                        snapshot.getMd5(), snapshot.getEncryptedDataKey(), true);
+                }
             }
         } catch (Exception e) {
             // ignore, fall through to snapshot
         }
-        // Try local snapshot (compute MD5 from the same content to ensure consistency)
+        // Try local snapshot: compute MD5 from the captured content to guarantee content/MD5
+        // consistency. For encrypted configs with a non-blank disk key, skip conditional GET
+        // because the disk key and content are written separately and may not be paired.
         try {
             String snapshotContent =
                 LocalConfigInfoProcessor.getSnapshot(worker.getAgentName(), dataId, group,
@@ -174,8 +185,13 @@ public class NacosConfigService implements ConfigService {
                 String snapshotEncryptedDataKey =
                     LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(worker.getAgentName(),
                         dataId, group, namespace);
+                if (StringUtils.isNotBlank(snapshotEncryptedDataKey)) {
+                    // Encrypted config on disk: key and content are separate writes, cannot
+                    // prove they belong to the same version. Skip conditional GET, fetch full.
+                    return new ClientWorker.LocalConfigContent(null, null, null, false);
+                }
                 return new ClientWorker.LocalConfigContent(snapshotContent, snapshotMd5,
-                    snapshotEncryptedDataKey, true);
+                    null, true);
             }
         } catch (Exception e) {
             // ignore

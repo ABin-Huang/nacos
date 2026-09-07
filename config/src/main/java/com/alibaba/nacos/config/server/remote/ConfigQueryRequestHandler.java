@@ -256,6 +256,15 @@ public class ConfigQueryRequestHandler
                 } else {
                     return ConfigTraceService.PULL_EVENT;
                 }
+            case CONFIG_NOT_MODIFIED:
+                // 304 may come from either formal or gray/tag config. Check matchedGray
+                // to preserve correct pull-event classification instead of treating all
+                // 304s as formal reads.
+                ConfigCacheGray notModifiedGray = chainResponse.getMatchedGray();
+                if (notModifiedGray != null) {
+                    return ConfigTraceService.PULL_EVENT + "-" + notModifiedGray.getGrayName();
+                }
+                return ConfigTraceService.PULL_EVENT;
             case SPECIAL_TAG_CONFIG_NOT_FOUND:
                 return ConfigTraceService.PULL_EVENT + "-" + TagGrayRule.TYPE_TAG + "-" + tag;
             default:

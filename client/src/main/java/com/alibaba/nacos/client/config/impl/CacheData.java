@@ -151,6 +151,13 @@ public class CacheData {
     private volatile String encryptedDataKey;
     
     /**
+     * Lock for atomic content/md5/encryptedDataKey updates and consistent snapshot reads.
+     * All three fields must be updated and read under this lock to prevent mixed-version
+     * reads (e.g., content A with md5/key from version B).
+     */
+    private final Object configLock = new Object();
+    
+    /**
      * local cache change timestamp.
      */
     private final AtomicLong lastModifiedTs = new AtomicLong(0);
@@ -198,8 +205,75 @@ public class CacheData {
     }
     
     public void setContent(String content) {
-        this.content = content;
-        this.md5 = getMd5String(this.content);
+        synchronized (configLock) {
+            this.content = content;
+            this.md5 = getMd5String(this.content);
+        }
+    }
+    
+    /**
+     * Atomically set content, compute its MD5, and set encryptedDataKey as one consistent version.
+     * This is the preferred update path for config refresh to prevent mixed-version reads.
+     *
+     * @param content          raw config content
+     * @param encryptedDataKey encrypted data key, may be null
+     * @since 3.3.0
+     */
+    public void setConfigContentAndKey(String content, String encryptedDataKey) {
+        synchronized (configLock) {
+            this.encryptedDataKey = encryptedDataKey;
+            this.content = content;
+            this.md5 = getMd5String(this.content);
+        }
+    }
+    
+    /**
+     * Capture a consistent snapshot of content/md5/encryptedDataKey as one immutable version.
+     * All three fields are read under the same lock used by updates, ensuring they belong
+     * to the same version.
+     *
+     * @return consistent snapshot, or null if content is blank
+     * @since 3.3.0
+     */
+    public ConfigSnapshot getConsistentSnapshot() {
+        synchronized (configLock) {
+            if (StringUtils.isBlank(content)) {
+                return null;
+            }
+            return new ConfigSnapshot(content, md5, encryptedDataKey);
+        }
+    }
+    
+    /**
+     * Immutable snapshot of a consistent content/md5/encryptedDataKey version.
+     *
+     * @since 3.3.0
+     */
+    public static final class ConfigSnapshot {
+        
+        private final String content;
+        
+        private final String md5;
+        
+        private final String encryptedDataKey;
+        
+        public ConfigSnapshot(String content, String md5, String encryptedDataKey) {
+            this.content = content;
+            this.md5 = md5;
+            this.encryptedDataKey = encryptedDataKey;
+        }
+        
+        public String getContent() {
+            return content;
+        }
+        
+        public String getMd5() {
+            return md5;
+        }
+        
+        public String getEncryptedDataKey() {
+            return encryptedDataKey;
+        }
     }
     
     public AtomicBoolean getReceiveNotifyChanged() {
@@ -607,7 +681,9 @@ public class CacheData {
     }
     
     public void setEncryptedDataKey(String encryptedDataKey) {
-        this.encryptedDataKey = encryptedDataKey;
+        synchronized (configLock) {
+            this.encryptedDataKey = encryptedDataKey;
+        }
     }
     
     private String loadEncryptedDataKeyFromDiskLocal(String envName, String dataId, String group,

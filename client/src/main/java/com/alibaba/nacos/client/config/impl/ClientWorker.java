@@ -1203,8 +1203,10 @@ public class ClientWorker implements Closeable {
                 ConfigResponse response =
                     this.queryConfigInner(rpcClient, cacheData.dataId, cacheData.group,
                         cacheData.tenant, requestTimeout, notify);
-                cacheData.setEncryptedDataKey(response.getEncryptedDataKey());
-                cacheData.setContent(response.getContent());
+                // Atomically set content/md5/encryptedDataKey as one consistent version
+                // to prevent mixed-version reads by concurrent getConfig calls.
+                cacheData.setConfigContentAndKey(response.getContent(),
+                    response.getEncryptedDataKey());
                 if (null != response.getConfigType()) {
                     cacheData.setType(response.getConfigType());
                 }
@@ -1586,15 +1588,11 @@ public class ClientWorker implements Closeable {
                     configType304 = ConfigType.TEXT.getType();
                 }
                 configResponse.setConfigType(configType304);
-                // Use retained encryptedDataKey if available, otherwise fall back to snapshot
-                if (StringUtils.isNotBlank(retainedEncryptedDataKey)) {
-                    configResponse.setEncryptedDataKey(retainedEncryptedDataKey);
-                } else {
-                    String localEncryptedDataKey =
-                        LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(agent.getName(),
-                            dataId, group, tenant);
-                    configResponse.setEncryptedDataKey(localEncryptedDataKey);
-                }
+                // 304: use ONLY the retained encryptedDataKey captured before the request.
+                // Do NOT fall back to a freshly read snapshot key, which may belong to a
+                // different version written concurrently after the request was dispatched.
+                // The retained content+key pair is guaranteed consistent by the capture mechanism.
+                configResponse.setEncryptedDataKey(retainedEncryptedDataKey);
                 return configResponse;
             } else if (response.getErrorCode() == ConfigQueryResponse.CONFIG_NOT_FOUND) {
                 LocalConfigInfoProcessor.saveSnapshot(this.getName(), dataId, group, tenant, null);
@@ -1735,6 +1733,14 @@ public class ClientWorker implements Closeable {
                         tenant);
                 }
                 return response;
+            } catch (NacosException e) {
+                // RpcClient turns ErrorResponse into NacosException carrying the original
+                // error code. Preserve getErrCode()/message in the result instead of
+                // collapsing to -1, so callers can distinguish CAS conflicts, no-right, etc.
+                LOGGER.warn(
+                    "[{}] [publish-single] error, dataId={}, group={}, tenant={}, code={}, msg={}",
+                    this.getName(), dataId, group, tenant, e.getErrCode(), e.getMessage());
+                return ConfigPublishResponse.buildFailResponse(e.getErrCode(), e.getMessage());
             } catch (Exception e) {
                 LOGGER.warn(
                     "[{}] [publish-single] error, dataId={}, group={}, tenant={}, code={}, msg={}",
