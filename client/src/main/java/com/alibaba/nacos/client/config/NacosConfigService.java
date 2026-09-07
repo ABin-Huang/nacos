@@ -339,16 +339,22 @@ public class NacosConfigService implements ConfigService {
         content = cr.getContent();
         String encryptedDataKey = cr.getEncryptedDataKey();
         
-        ConfigPublishResponse response = worker.publishConfigWithResponse(dataId, group,
-            namespace, null, null, null,
-            content, encryptedDataKey, casMd5, type);
-        
-        if (response.isSuccess()) {
-            // Compute MD5 of published content for the result
-            String publishedMd5 = MD5Utils.md5Hex(content, Constants.ENCODE);
-            return PublishConfigResult.success(publishedMd5);
+        try {
+            ConfigPublishResponse response = worker.publishConfigWithResponse(dataId, group,
+                namespace, null, null, null,
+                content, encryptedDataKey, casMd5, type);
+            
+            if (response.isSuccess()) {
+                // Compute MD5 of published content for the result
+                String publishedMd5 = MD5Utils.md5Hex(content, Constants.ENCODE);
+                return PublishConfigResult.success(publishedMd5);
+            }
+            return PublishConfigResult.fail(response.getErrorCode(), response.getMessage());
+        } catch (NacosException e) {
+            // RpcClient may turn ErrorResponse into NacosException carrying the original
+            // error code. Preserve getErrCode()/message in the result instead of propagating.
+            return PublishConfigResult.fail(e.getErrCode(), e.getMessage());
         }
-        return PublishConfigResult.fail(response.getErrorCode(), response.getMessage());
     }
     
     @Override

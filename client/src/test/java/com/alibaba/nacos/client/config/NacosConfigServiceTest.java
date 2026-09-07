@@ -794,6 +794,56 @@ class NacosConfigServiceTest {
     }
     
     @Test
+    void testPublishConfigWithRequestNacosExceptionPreservesErrorCode() throws NacosException {
+        // RpcClient turns ErrorResponse into NacosException carrying the original error code.
+        // publishConfigWithResponse must preserve getErrCode()/message instead of collapsing to -1.
+        Mockito.when(mockWoker.publishConfigWithResponse(anyString(), anyString(), anyString(),
+            Mockito.any(), Mockito.any(), Mockito.any(), anyString(), Mockito.any(),
+            Mockito.any(), anyString()))
+            .thenThrow(new NacosException(NacosException.NO_RIGHT, "no right for publish"));
+        
+        PublishConfigRequest request = PublishConfigRequest.builder()
+            .dataId("pub-ex")
+            .group("pub-group")
+            .content("pub-content")
+            .type("text")
+            .build();
+        PublishConfigResult result = nacosConfigService.publishConfig(request);
+        
+        Assertions.assertFalse(result.isSuccess());
+        assertEquals(NacosException.NO_RIGHT, result.getErrorCode());
+        assertEquals("no right for publish", result.getErrorMessage());
+    }
+    
+    @Test
+    void testGetConfigWithExplicitMd5NoMatchingLocalRepresentation() throws NacosException {
+        // When caller explicitly provides localMd5 but no matching local content exists,
+        // the query should be sent without conditional MD5 (hasLocalRepresentation=false),
+        // avoiding a 304 with no restorable content.
+        ConfigResponse response = new ConfigResponse();
+        response.setContent("server-content-explicit");
+        response.setMd5("server-md5-explicit");
+        response.setConfigType("text");
+        
+        // Mock the 7-arg getServerConfig with any localMd5 (since no local representation,
+        // conditionalMd5 will be null, but we mock anyString to cover both paths)
+        Mockito.when(mockWoker.getServerConfig(eq("explicit-data"), eq("g"), eq("public"),
+            eq(3000L), eq(false), Mockito.isNull(), any(ClientWorker.LocalConfigContent.class)))
+            .thenReturn(response);
+        
+        GetConfigRequest request = GetConfigRequest.builder()
+            .dataId("explicit-data")
+            .group("g")
+            .timeoutMs(3000)
+            .localMd5("non-matching-md5-xyz")
+            .build();
+        com.alibaba.nacos.api.config.ConfigQueryResult result = nacosConfigService.getConfig(request);
+        
+        assertEquals("server-content-explicit", result.getContent());
+        assertEquals("server-md5-explicit", result.getMd5());
+    }
+    
+    @Test
     void testRemoveConfigWithRequestSuccess() throws NacosException {
         com.alibaba.nacos.api.config.remote.response.ConfigRemoveResponse removeResponse =
             com.alibaba.nacos.api.config.remote.response.ConfigRemoveResponse

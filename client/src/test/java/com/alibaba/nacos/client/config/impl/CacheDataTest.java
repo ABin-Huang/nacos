@@ -307,4 +307,98 @@ class CacheDataTest {
         // If the reset works, it will try to submit again and throw the exception again.
         data.checkListenerMd5();
     }
+    
+    @Test
+    void testGetConsistentSnapshotReturnsNullWhenContentBlank() {
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        // Content is null by default
+        assertNull(cacheData.getConsistentSnapshot());
+        
+        cacheData.setContent("");
+        assertNull(cacheData.getConsistentSnapshot());
+    }
+    
+    @Test
+    void testGetConsistentSnapshotReturnsConsistentContentAndMd5() {
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        String content = "test-content-for-snapshot";
+        cacheData.setContent(content);
+        
+        CacheData.ConfigSnapshot snapshot = cacheData.getConsistentSnapshot();
+        assertEquals(content, snapshot.getContent());
+        assertEquals(MD5Utils.md5Hex(content, "UTF-8"), snapshot.getMd5());
+        assertNull(snapshot.getEncryptedDataKey());
+    }
+    
+    @Test
+    void testSetConfigContentAndKeyAtomicUpdate() {
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        String content = "encrypted-content";
+        String key = "enc-key-123";
+        
+        cacheData.setConfigContentAndKey(content, key);
+        
+        CacheData.ConfigSnapshot snapshot = cacheData.getConsistentSnapshot();
+        assertEquals(content, snapshot.getContent());
+        assertEquals(MD5Utils.md5Hex(content, "UTF-8"), snapshot.getMd5());
+        assertEquals(key, snapshot.getEncryptedDataKey());
+        
+        // Verify individual getters also reflect the update
+        assertEquals(content, cacheData.getContent());
+        assertEquals(MD5Utils.md5Hex(content, "UTF-8"), cacheData.getMd5());
+        assertEquals(key, cacheData.getEncryptedDataKey());
+    }
+    
+    @Test
+    void testGetConsistentSnapshotUnderConcurrentUpdate() throws InterruptedException {
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        cacheData.setContent("initial");
+        
+        final int iterations = 500;
+        final AtomicReference<String> failure = new AtomicReference<>(null);
+        
+        Thread writer = new Thread(() -> {
+            for (int i = 0; i < iterations; i++) {
+                String content = "content-version-" + i;
+                String key = "key-version-" + i;
+                cacheData.setConfigContentAndKey(content, key);
+            }
+        });
+        
+        Thread reader = new Thread(() -> {
+            for (int i = 0; i < iterations; i++) {
+                CacheData.ConfigSnapshot snapshot = cacheData.getConsistentSnapshot();
+                if (snapshot != null) {
+                    String expectedMd5 = MD5Utils.md5Hex(snapshot.getContent(), "UTF-8");
+                    if (!expectedMd5.equals(snapshot.getMd5())) {
+                        failure.set("Inconsistent snapshot: content=" + snapshot.getContent()
+                            + ", md5=" + snapshot.getMd5() + ", expected=" + expectedMd5);
+                        return;
+                    }
+                    // Verify key matches the version pattern of content
+                    String content = snapshot.getContent();
+                    String key = snapshot.getEncryptedDataKey();
+                    if (content.startsWith("content-version-") && key != null) {
+                        String version = content.substring("content-version-".length());
+                        if (!("key-version-" + version).equals(key)) {
+                            failure.set("Mixed version snapshot: content=" + content
+                                + ", key=" + key);
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+        
+        assertNull(failure.get(), failure.get());
+    }
 }
