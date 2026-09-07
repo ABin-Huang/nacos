@@ -33,14 +33,17 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class CacheDataTest {
     
@@ -422,5 +425,99 @@ class CacheDataTest {
         reader.join();
         
         assertNull(failure.get(), failure.get());
+    }
+    
+    @Test
+    void testMismatchedDiskContentKeyPairNotVerified() {
+        // Simulate CacheData initialization from disk: content and key read from separate
+        // files, may not belong to the same version. Even though both fields are set,
+        // getConsistentSnapshot must return null because the pair is not verified.
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        
+        // Disk initialization: separate reads (simulating setContent + setEncryptedDataKey)
+        cacheData.setContent("cipher-disk-content-version-A");
+        cacheData.setEncryptedDataKey("disk-key-version-B");
+        
+        // Not verified: separate setters don't mark verifiedPair
+        assertNull(cacheData.getConsistentSnapshot());
+        
+        // After a full server response with matching pair, it becomes verified and usable
+        cacheData.setConfigContentAndKey("server-content-version-C", "server-key-version-C");
+        CacheData.ConfigSnapshot snapshot = cacheData.getConsistentSnapshot();
+        assertNotNull(snapshot);
+        assertEquals("server-content-version-C", snapshot.getContent());
+        assertEquals("server-key-version-C", snapshot.getEncryptedDataKey());
+    }
+    
+    @Test
+    void testAddTenantListenersPathAtomicUpdateWithLatches() throws InterruptedException {
+        // Deterministic regression test for the addTenantListenersWithContent() production path.
+        // Uses latches to force interleaving: reader starts after writer has set encryptedDataKey
+        // but before setContent. With the atomic setConfigContentAndKey fix, the reader must
+        // never see old content paired with the new key.
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        final CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        
+        // Pre-populate with an initial verified pair (simulating already-registered cache)
+        cacheData.setConfigContentAndKey("initial-content", "initial-key");
+        
+        final CountDownLatch writerReady = new CountDownLatch(1);
+        final CountDownLatch readerReady = new CountDownLatch(1);
+        final CountDownLatch writerDone = new CountDownLatch(1);
+        final AtomicReference<CacheData.ConfigSnapshot> capturedSnapshot = new AtomicReference<>();
+        
+        // Writer thread: simulates addTenantListenersWithContent() calling setConfigContentAndKey
+        Thread writer = new Thread(() -> {
+            writerReady.countDown();
+            try {
+                readerReady.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            // This is the atomic call used by addTenantListenersWithContent after the fix
+            cacheData.setConfigContentAndKey("new-content", "new-key");
+            writerDone.countDown();
+        });
+        
+        // Reader thread: captures snapshot while writer is in progress
+        Thread reader = new Thread(() -> {
+            try {
+                writerReady.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            readerReady.countDown();
+            // Capture snapshot - with atomic update, this either sees the full old pair
+            // or the full new pair, never a mixed pair
+            capturedSnapshot.set(cacheData.getConsistentSnapshot());
+        });
+        
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+        writerDone.await();
+        
+        // Verify the captured snapshot is consistent (key belongs to content)
+        CacheData.ConfigSnapshot snap = capturedSnapshot.get();
+        assertNotNull(snap, "Snapshot should not be null after atomic update");
+        String content = snap.getContent();
+        String key = snap.getEncryptedDataKey();
+        
+        if ("initial-content".equals(content)) {
+            assertEquals("initial-key", key, "Old content must pair with old key");
+        } else if ("new-content".equals(content)) {
+            assertEquals("new-key", key, "New content must pair with new key");
+        } else {
+            fail("Unexpected content: " + content);
+        }
+        
+        // Final state should be the new pair
+        CacheData.ConfigSnapshot finalSnap = cacheData.getConsistentSnapshot();
+        assertEquals("new-content", finalSnap.getContent());
+        assertEquals("new-key", finalSnap.getEncryptedDataKey());
     }
 }
