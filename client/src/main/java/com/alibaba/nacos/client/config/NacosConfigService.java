@@ -174,9 +174,10 @@ public class NacosConfigService implements ConfigService {
             // ignore, fall through to snapshot
         }
         // Try local snapshot: compute MD5 from the captured content to guarantee content/MD5
-        // consistency. For encrypted configs (either ciphertext content or non-blank disk key),
-        // skip conditional GET because the disk key and content are written separately and may
-        // not be paired; an absent key file does NOT prove the config is unencrypted.
+        // consistency. For encrypted configs (dataId starts with "cipher-" per Nacos
+        // encryption semantics, or non-blank disk key), skip conditional GET because the disk
+        // key and content are written separately and may not be paired; an absent key file
+        // does NOT prove the config is unencrypted.
         try {
             String snapshotContent =
                 LocalConfigInfoProcessor.getSnapshot(worker.getAgentName(), dataId, group,
@@ -186,12 +187,13 @@ public class NacosConfigService implements ConfigService {
                 String snapshotEncryptedDataKey =
                     LocalEncryptedDataKeyProcessor.getEncryptDataKeySnapshot(worker.getAgentName(),
                         dataId, group, namespace);
-                // An absent disk key does not prove the config is unencrypted: ciphertext content
-                // (prefixed with "cipher-") requires a key to decrypt. Skip conditional GET for
-                // any encrypted representation where the content/key pairing cannot be proven.
+                // "cipher-" is a dataId prefix (per EncryptionHandler.checkCipher()), not a
+                // ciphertext-content prefix. An absent disk key does not prove the config is
+                // unencrypted: a cipher-* dataId always requires a key to decrypt. Skip
+                // conditional GET for any encrypted representation where pairing cannot be proven.
                 boolean isEncryptedRepresentation =
                     StringUtils.isNotBlank(snapshotEncryptedDataKey)
-                        || snapshotContent.startsWith("cipher-");
+                        || dataId.startsWith("cipher-");
                 if (isEncryptedRepresentation) {
                     return new ClientWorker.LocalConfigContent(null, null, null, false);
                 }

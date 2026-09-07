@@ -520,4 +520,37 @@ class CacheDataTest {
         assertEquals("new-content", finalSnap.getContent());
         assertEquals("new-key", finalSnap.getEncryptedDataKey());
     }
+    
+    @Test
+    void testVerifiedPairInvalidatedByIndividualSetters() {
+        // State transition test: paired update (verified=true) -> individual content/key update
+        // (verified=false, snapshot unavailable) -> paired refresh (verified=true, snapshot available).
+        // This detects the regression where verifiedPair remained true after individual setters.
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        CacheData cacheData = new CacheData(filter, "name", "dataId", "group", "tenant");
+        
+        // Step 1: Paired update from full server response -> verified, snapshot available
+        cacheData.setConfigContentAndKey("server-content-v1", "server-key-v1");
+        CacheData.ConfigSnapshot snap1 = cacheData.getConsistentSnapshot();
+        assertNotNull(snap1, "After paired update, snapshot should be available");
+        assertEquals("server-content-v1", snap1.getContent());
+        assertEquals("server-key-v1", snap1.getEncryptedDataKey());
+        
+        // Step 2: Individual setContent() (e.g., failover overwrite) -> verified=false
+        cacheData.setContent("failover-content");
+        CacheData.ConfigSnapshot snap2 = cacheData.getConsistentSnapshot();
+        assertNull(snap2, "After individual setContent, snapshot should be unavailable");
+        
+        // Step 3: Individual setEncryptedDataKey() -> still verified=false
+        cacheData.setEncryptedDataKey("failover-key");
+        CacheData.ConfigSnapshot snap3 = cacheData.getConsistentSnapshot();
+        assertNull(snap3, "After individual setEncryptedDataKey, snapshot should still be unavailable");
+        
+        // Step 4: Paired refresh from full server response -> verified=true again
+        cacheData.setConfigContentAndKey("server-content-v2", "server-key-v2");
+        CacheData.ConfigSnapshot snap4 = cacheData.getConsistentSnapshot();
+        assertNotNull(snap4, "After paired refresh, snapshot should be available again");
+        assertEquals("server-content-v2", snap4.getContent());
+        assertEquals("server-key-v2", snap4.getEncryptedDataKey());
+    }
 }

@@ -217,6 +217,9 @@ public class CacheData {
         synchronized (configLock) {
             this.content = content;
             this.md5 = getMd5String(this.content);
+            // Individual content update breaks the verified content/key pairing.
+            // Only setConfigContentAndKey() can re-establish a verified pair.
+            this.verifiedPair = false;
         }
     }
     
@@ -701,6 +704,9 @@ public class CacheData {
     public void setEncryptedDataKey(String encryptedDataKey) {
         synchronized (configLock) {
             this.encryptedDataKey = encryptedDataKey;
+            // Individual key update breaks the verified content/key pairing.
+            // Only setConfigContentAndKey() can re-establish a verified pair.
+            this.verifiedPair = false;
         }
     }
     
