@@ -544,7 +544,8 @@ class CacheDataTest {
         // Step 3: Individual setEncryptedDataKey() -> still verified=false
         cacheData.setEncryptedDataKey("failover-key");
         CacheData.ConfigSnapshot snap3 = cacheData.getConsistentSnapshot();
-        assertNull(snap3, "After individual setEncryptedDataKey, snapshot should still be unavailable");
+        assertNull(snap3,
+            "After individual setEncryptedDataKey, snapshot should still be unavailable");
         
         // Step 4: Paired refresh from full server response -> verified=true again
         cacheData.setConfigContentAndKey("server-content-v2", "server-key-v2");

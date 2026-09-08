@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RemoveConfigResultTest {
-
+    
     @Test
     @DisplayName("test default constructor")
     void testDefaultConstructor() {
@@ -34,7 +34,7 @@ class RemoveConfigResultTest {
         assertEquals(0, result.getErrorCode());
         assertNull(result.getErrorMessage());
     }
-
+    
     @Test
     @DisplayName("test success factory method")
     void testSuccessFactoryMethod() {
@@ -43,7 +43,7 @@ class RemoveConfigResultTest {
         assertEquals(0, result.getErrorCode());
         assertNull(result.getErrorMessage());
     }
-
+    
     @Test
     @DisplayName("test fail factory method")
     void testFailFactoryMethod() {
@@ -52,7 +52,7 @@ class RemoveConfigResultTest {
         assertEquals(500, result.getErrorCode());
         assertEquals("server error", result.getErrorMessage());
     }
-
+    
     @Test
     @DisplayName("test getter and setter")
     void testGetterAndSetter() {
@@ -60,12 +60,12 @@ class RemoveConfigResultTest {
         result.setSuccess(true);
         result.setErrorCode(0);
         result.setErrorMessage(null);
-
+        
         assertTrue(result.isSuccess());
         assertEquals(0, result.getErrorCode());
         assertNull(result.getErrorMessage());
     }
-
+    
     @Test
     @DisplayName("test toString")
     void testToString() {

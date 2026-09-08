@@ -34,24 +34,24 @@ import java.io.Serializable;
  * @since 3.3.0
  */
 public class GetConfigRequest implements Serializable {
-
+    
     private static final long serialVersionUID = 1L;
-
+    
     /**
      * Configuration dataId.
      */
     private String dataId;
-
+    
     /**
      * Configuration group. If null or blank, defaults to DEFAULT_GROUP.
      */
     private String group;
-
+    
     /**
      * Read timeout in milliseconds.
      */
     private long timeoutMs;
-
+    
     /**
      * Local cached MD5 of the configuration content.
      *
@@ -59,17 +59,17 @@ public class GetConfigRequest implements Serializable {
      * server-side MD5, the server returns 304 without content.</p>
      */
     private String localMd5;
-
+    
     public GetConfigRequest() {
     }
-
+    
     private GetConfigRequest(Builder builder) {
         this.dataId = builder.dataId;
         this.group = builder.group;
         this.timeoutMs = builder.timeoutMs;
         this.localMd5 = builder.localMd5;
     }
-
+    
     /**
      * Create a new builder instance.
      *
@@ -78,76 +78,76 @@ public class GetConfigRequest implements Serializable {
     public static Builder builder() {
         return new Builder();
     }
-
+    
     public String getDataId() {
         return dataId;
     }
-
+    
     public void setDataId(String dataId) {
         this.dataId = dataId;
     }
-
+    
     public String getGroup() {
         return group;
     }
-
+    
     public void setGroup(String group) {
         this.group = group;
     }
-
+    
     public long getTimeoutMs() {
         return timeoutMs;
     }
-
+    
     public void setTimeoutMs(long timeoutMs) {
         this.timeoutMs = timeoutMs;
     }
-
+    
     public String getLocalMd5() {
         return localMd5;
     }
-
+    
     public void setLocalMd5(String localMd5) {
         this.localMd5 = localMd5;
     }
-
+    
     @Override
     public String toString() {
         return "GetConfigRequest{dataId='" + dataId + "', group='" + group + "', timeoutMs="
             + timeoutMs + ", localMd5='" + localMd5 + "'}";
     }
-
+    
     /**
      * Builder for {@link GetConfigRequest}.
      */
     public static final class Builder {
-
+        
         private String dataId;
-
+        
         private String group;
-
+        
         private long timeoutMs;
-
+        
         private String localMd5;
-
+        
         private Builder() {
         }
-
+        
         public Builder dataId(String dataId) {
             this.dataId = dataId;
             return this;
         }
-
+        
         public Builder group(String group) {
             this.group = group;
             return this;
         }
-
+        
         public Builder timeoutMs(long timeoutMs) {
             this.timeoutMs = timeoutMs;
             return this;
         }
-
+        
         /**
          * Set the local cached MD5 for 304 conditional GET.
          *
@@ -158,7 +158,7 @@ public class GetConfigRequest implements Serializable {
             this.localMd5 = localMd5;
             return this;
         }
-
+        
         public GetConfigRequest build() {
             return new GetConfigRequest(this);
         }

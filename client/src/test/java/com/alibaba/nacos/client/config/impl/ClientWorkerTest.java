@@ -540,8 +540,8 @@ class ClientWorkerTest {
                 && newKey.equals(snap.getEncryptedDataKey());
             assertTrue(isOldPair || isNewPair,
                 "Captured snapshot between setters must be a consistent pair (old or new), "
-                + "not mismatched: content=" + snap.getContent()
-                + ", key=" + snap.getEncryptedDataKey());
+                    + "not mismatched: content=" + snap.getContent()
+                    + ", key=" + snap.getEncryptedDataKey());
         }
     }
     

@@ -30,34 +30,34 @@ import java.io.Serializable;
  * @since 3.3.0
  */
 public class RemoveConfigResult implements Serializable {
-
+    
     private static final long serialVersionUID = 1L;
-
+    
     /**
      * Whether the removal was successful.
      */
     private boolean success;
-
+    
     /**
      * Error code when the removal failed.
      * 0 indicates success.
      */
     private int errorCode;
-
+    
     /**
      * Detailed error message when the removal failed.
      */
     private String errorMessage;
-
+    
     public RemoveConfigResult() {
     }
-
+    
     private RemoveConfigResult(Builder builder) {
         this.success = builder.success;
         this.errorCode = builder.errorCode;
         this.errorMessage = builder.errorMessage;
     }
-
+    
     /**
      * Create a success result.
      *
@@ -66,7 +66,7 @@ public class RemoveConfigResult implements Serializable {
     public static RemoveConfigResult success() {
         return new Builder().success(true).build();
     }
-
+    
     /**
      * Create a failure result.
      *
@@ -78,66 +78,66 @@ public class RemoveConfigResult implements Serializable {
         return new Builder().success(false).errorCode(errorCode).errorMessage(errorMessage)
             .build();
     }
-
+    
     public boolean isSuccess() {
         return success;
     }
-
+    
     public void setSuccess(boolean success) {
         this.success = success;
     }
-
+    
     public int getErrorCode() {
         return errorCode;
     }
-
+    
     public void setErrorCode(int errorCode) {
         this.errorCode = errorCode;
     }
-
+    
     public String getErrorMessage() {
         return errorMessage;
     }
-
+    
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
     }
-
+    
     @Override
     public String toString() {
         return "RemoveConfigResult{success=" + success + ", errorCode=" + errorCode
             + ", errorMessage='" + errorMessage + "'}";
     }
-
+    
     /**
      * Builder for {@link RemoveConfigResult}.
      */
     public static final class Builder {
-
+        
         private boolean success;
-
+        
         private int errorCode;
-
+        
         private String errorMessage;
-
+        
         private Builder() {
         }
-
+        
         public Builder success(boolean success) {
             this.success = success;
             return this;
         }
-
+        
         public Builder errorCode(int errorCode) {
             this.errorCode = errorCode;
             return this;
         }
-
+        
         public Builder errorMessage(String errorMessage) {
             this.errorMessage = errorMessage;
             return this;
         }
-
+        
         public RemoveConfigResult build() {
             return new RemoveConfigResult(this);
         }

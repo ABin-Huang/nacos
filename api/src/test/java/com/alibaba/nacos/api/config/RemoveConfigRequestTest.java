@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class RemoveConfigRequestTest {
-
+    
     @Test
     @DisplayName("test default constructor")
     void testDefaultConstructor() {
@@ -31,7 +31,7 @@ class RemoveConfigRequestTest {
         assertNull(request.getDataId());
         assertNull(request.getGroup());
     }
-
+    
     @Test
     @DisplayName("test builder with all fields")
     void testBuilderWithAllFields() {
@@ -39,22 +39,22 @@ class RemoveConfigRequestTest {
             .dataId("test-data-id")
             .group("test-group")
             .build();
-
+        
         assertEquals("test-data-id", request.getDataId());
         assertEquals("test-group", request.getGroup());
     }
-
+    
     @Test
     @DisplayName("test getter and setter")
     void testGetterAndSetter() {
         RemoveConfigRequest request = new RemoveConfigRequest();
         request.setDataId("data-id");
         request.setGroup("group");
-
+        
         assertEquals("data-id", request.getDataId());
         assertEquals("group", request.getGroup());
     }
-
+    
     @Test
     @DisplayName("test toString")
     void testToString() {
@@ -62,7 +62,7 @@ class RemoveConfigRequestTest {
             .dataId("test-id")
             .group("test-group")
             .build();
-
+        
         String str = request.toString();
         assertEquals("RemoveConfigRequest{dataId='test-id', group='test-group'}", str);
     }

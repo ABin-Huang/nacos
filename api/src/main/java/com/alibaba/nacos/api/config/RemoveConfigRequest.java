@@ -29,27 +29,27 @@ import java.io.Serializable;
  * @since 3.3.0
  */
 public class RemoveConfigRequest implements Serializable {
-
+    
     private static final long serialVersionUID = 1L;
-
+    
     /**
      * Configuration dataId.
      */
     private String dataId;
-
+    
     /**
      * Configuration group. If null or blank, defaults to DEFAULT_GROUP.
      */
     private String group;
-
+    
     public RemoveConfigRequest() {
     }
-
+    
     private RemoveConfigRequest(Builder builder) {
         this.dataId = builder.dataId;
         this.group = builder.group;
     }
-
+    
     /**
      * Create a new builder instance.
      *
@@ -58,50 +58,50 @@ public class RemoveConfigRequest implements Serializable {
     public static Builder builder() {
         return new Builder();
     }
-
+    
     public String getDataId() {
         return dataId;
     }
-
+    
     public void setDataId(String dataId) {
         this.dataId = dataId;
     }
-
+    
     public String getGroup() {
         return group;
     }
-
+    
     public void setGroup(String group) {
         this.group = group;
     }
-
+    
     @Override
     public String toString() {
         return "RemoveConfigRequest{dataId='" + dataId + "', group='" + group + "'}";
     }
-
+    
     /**
      * Builder for {@link RemoveConfigRequest}.
      */
     public static final class Builder {
-
+        
         private String dataId;
-
+        
         private String group;
-
+        
         private Builder() {
         }
-
+        
         public Builder dataId(String dataId) {
             this.dataId = dataId;
             return this;
         }
-
+        
         public Builder group(String group) {
             this.group = group;
             return this;
         }
-
+        
         public RemoveConfigRequest build() {
             return new RemoveConfigRequest(this);
         }

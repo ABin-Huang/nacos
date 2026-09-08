@@ -31,7 +31,7 @@ import java.util.concurrent.Future;
  * @author Nacos
  */
 public interface ConfigService {
-
+    
     /**
      * Get config.
      *
@@ -43,7 +43,7 @@ public interface ConfigService {
      */
     @Since("0.2.0")
     String getConfig(String dataId, String group, long timeoutMs) throws NacosException;
-
+    
     /**
      * Get config with extensible request object.
      *
@@ -67,7 +67,7 @@ public interface ConfigService {
     default ConfigQueryResult getConfig(GetConfigRequest request) throws NacosException {
         return getConfigWithResult(request.getDataId(), request.getGroup(), request.getTimeoutMs());
     }
-
+    
     /**
      * Get config with full result including MD5.
      *
@@ -89,7 +89,7 @@ public interface ConfigService {
         String content = getConfig(dataId, group, timeoutMs);
         return new ConfigQueryResult(content, null);
     }
-
+    
     /**
      * Get config and register Listener.
      *
@@ -108,7 +108,7 @@ public interface ConfigService {
     @Since("1.1.0")
     String getConfigAndSignListener(String dataId, String group, long timeoutMs, Listener listener)
         throws NacosException;
-
+    
     /**
      * Add a listener to the configuration, after the server modified the configuration, the client will use the
      * incoming listener callback. Recommended asynchronous processing, the application can implement the getExecutor
@@ -122,7 +122,7 @@ public interface ConfigService {
      */
     @Since("0.2.0")
     void addListener(String dataId, String group, Listener listener) throws NacosException;
-
+    
     /**
      * Publish config.
      *
@@ -134,7 +134,7 @@ public interface ConfigService {
      */
     @Since("0.2.0")
     boolean publishConfig(String dataId, String group, String content) throws NacosException;
-
+    
     /**
      * Publish config.
      *
@@ -148,7 +148,7 @@ public interface ConfigService {
     @Since("1.4.1")
     boolean publishConfig(String dataId, String group, String content, String type)
         throws NacosException;
-
+    
     /**
      * Publish config with extensible request object.
      *
@@ -184,7 +184,7 @@ public interface ConfigService {
         return result ? PublishConfigResult.success()
             : PublishConfigResult.fail(-1, "publish config failed");
     }
-
+    
     /**
      * Cas Publish config.
      *
@@ -198,7 +198,7 @@ public interface ConfigService {
     @Since("2.0.0")
     boolean publishConfigCas(String dataId, String group, String content, String casMd5)
         throws NacosException;
-
+    
     /**
      * Cas Publish config.
      *
@@ -214,7 +214,7 @@ public interface ConfigService {
     boolean publishConfigCas(String dataId, String group, String content, String casMd5,
         String type)
         throws NacosException;
-
+    
     /**
      * Remove config.
      *
@@ -225,7 +225,7 @@ public interface ConfigService {
      */
     @Since("0.2.0")
     boolean removeConfig(String dataId, String group) throws NacosException;
-
+    
     /**
      * Remove config with extensible request object.
      *
@@ -245,7 +245,7 @@ public interface ConfigService {
         return result ? RemoveConfigResult.success()
             : RemoveConfigResult.fail(-1, "remove config failed");
     }
-
+    
     /**
      * Remove listener.
      *
@@ -255,7 +255,7 @@ public interface ConfigService {
      */
     @Since("0.2.0")
     void removeListener(String dataId, String group, Listener listener);
-
+    
     /**
      * Get server status.
      *
@@ -263,7 +263,7 @@ public interface ConfigService {
      */
     @Since("0.2.0")
     String getServerStatus();
-
+    
     /**
      * add config filter.
      * It is recommended to use {@link com.alibaba.nacos.api.config.filter.AbstractConfigFilter} to expand the filter.
@@ -273,7 +273,7 @@ public interface ConfigService {
      */
     @Since("2.3.0")
     void addConfigFilter(IConfigFilter configFilter);
-
+    
     /**
      * Shutdown the resource service.
      *
@@ -281,7 +281,7 @@ public interface ConfigService {
      */
     @Since("1.3.1")
     void shutDown() throws NacosException;
-
+    
     /**
      * Add a fuzzy listener to the configuration. After the server modifies the configuration matching the specified
      * fixed group name, the client will utilize the incoming fuzzy listener callback. Fuzzy listeners allow for
@@ -295,7 +295,7 @@ public interface ConfigService {
      */
     @Since("3.0.0")
     void fuzzyWatch(String groupNamePattern, FuzzyWatchEventWatcher watcher) throws NacosException;
-
+    
     /**
      * Add a fuzzy listener to the configuration. After the server modifies the configuration matching the specified
      * dataId pattern and fixed group name, the client will utilize the incoming fuzzy listener callback. Fuzzy
@@ -310,7 +310,7 @@ public interface ConfigService {
     @Since("3.0.0")
     void fuzzyWatch(String dataIdPattern, String groupNamePattern, FuzzyWatchEventWatcher watcher)
         throws NacosException;
-
+    
     /**
      * Add a fuzzy listener to the configuration and retrieve all configs that match the specified fixed group name.
      * Fuzzy listeners allow for pattern-based subscription to configs, where the fixed group name represents the group
@@ -325,7 +325,7 @@ public interface ConfigService {
     @Since("3.0.0")
     Future<Set<String>> fuzzyWatchWithGroupKeys(String groupNamePattern,
         FuzzyWatchEventWatcher watcher) throws NacosException;
-
+    
     /**
      * Add a fuzzy listener to the configuration and retrieve all configs that match the specified dataId pattern and
      * fixed group name. Fuzzy listeners allow for pattern-based subscription to configs.
@@ -341,7 +341,7 @@ public interface ConfigService {
     @Since("3.0.0")
     Future<Set<String>> fuzzyWatchWithGroupKeys(String dataIdPattern, String groupNamePattern,
         FuzzyWatchEventWatcher watcher) throws NacosException;
-
+    
     /**
      * Cancel fuzzy listen and remove the event listener for a specified fixed group name.
      *
@@ -353,7 +353,7 @@ public interface ConfigService {
     @Since("3.0.0")
     void cancelFuzzyWatch(String groupNamePattern, FuzzyWatchEventWatcher watcher)
         throws NacosException;
-
+    
     /**
      * Cancel fuzzy listen and remove the event listener for a specified service name pattern and fixed group name.
      *
@@ -367,5 +367,5 @@ public interface ConfigService {
     void cancelFuzzyWatch(String dataIdPattern, String groupNamePattern,
         FuzzyWatchEventWatcher watcher)
         throws NacosException;
-
+    
 }

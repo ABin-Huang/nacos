@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class PublishConfigRequestTest {
-
+    
     @Test
     @DisplayName("test default constructor")
     void testDefaultConstructor() {
@@ -34,7 +34,7 @@ class PublishConfigRequestTest {
         assertNull(request.getType());
         assertNull(request.getCasMd5());
     }
-
+    
     @Test
     @DisplayName("test builder with all fields including casMd5")
     void testBuilderWithAllFields() {
@@ -45,14 +45,14 @@ class PublishConfigRequestTest {
             .type("yaml")
             .casMd5("prev-md5-hash")
             .build();
-
+        
         assertEquals("test-data-id", request.getDataId());
         assertEquals("test-group", request.getGroup());
         assertEquals("config content", request.getContent());
         assertEquals("yaml", request.getType());
         assertEquals("prev-md5-hash", request.getCasMd5());
     }
-
+    
     @Test
     @DisplayName("test builder without casMd5 for normal publish")
     void testBuilderWithoutCasMd5() {
@@ -62,14 +62,14 @@ class PublishConfigRequestTest {
             .content("config content")
             .type("properties")
             .build();
-
+        
         assertEquals("test-data-id", request.getDataId());
         assertEquals("test-group", request.getGroup());
         assertEquals("config content", request.getContent());
         assertEquals("properties", request.getType());
         assertNull(request.getCasMd5());
     }
-
+    
     @Test
     @DisplayName("test getter and setter")
     void testGetterAndSetter() {
@@ -79,14 +79,14 @@ class PublishConfigRequestTest {
         request.setContent("content");
         request.setType("json");
         request.setCasMd5("cas-md5");
-
+        
         assertEquals("data-id", request.getDataId());
         assertEquals("group", request.getGroup());
         assertEquals("content", request.getContent());
         assertEquals("json", request.getType());
         assertEquals("cas-md5", request.getCasMd5());
     }
-
+    
     @Test
     @DisplayName("test toString contains key fields")
     void testToString() {
@@ -97,7 +97,7 @@ class PublishConfigRequestTest {
             .type("yaml")
             .casMd5("hash123")
             .build();
-
+        
         String str = request.toString();
         assertEquals("PublishConfigRequest{dataId='test-id', group='test-group', type='yaml', "
             + "casMd5='hash123', content length=12}", str);

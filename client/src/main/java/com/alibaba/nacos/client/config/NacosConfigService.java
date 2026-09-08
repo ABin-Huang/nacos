@@ -212,7 +212,7 @@ public class NacosConfigService implements ConfigService {
      * so the query is sent without conditional MD5 (to avoid a 304 with no restorable content).
      */
     private ClientWorker.LocalConfigContent resolveLocalConfigContentWithMd5(String dataId,
-            String group, String explicitMd5) {
+        String group, String explicitMd5) {
         ClientWorker.LocalConfigContent local = resolveLocalConfigContent(dataId, group);
         if (local.hasLocalRepresentation() && explicitMd5.equals(local.getMd5())) {
             return local;

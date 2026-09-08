@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublishConfigResultTest {
-
+    
     @Test
     @DisplayName("test default constructor")
     void testDefaultConstructor() {
@@ -35,7 +35,7 @@ class PublishConfigResultTest {
         assertNull(result.getErrorMessage());
         assertNull(result.getMd5());
     }
-
+    
     @Test
     @DisplayName("test success factory method")
     void testSuccessFactoryMethod() {
@@ -44,7 +44,7 @@ class PublishConfigResultTest {
         assertEquals(0, result.getErrorCode());
         assertNull(result.getErrorMessage());
     }
-
+    
     @Test
     @DisplayName("test success factory method with md5")
     void testSuccessFactoryMethodWithMd5() {
@@ -52,7 +52,7 @@ class PublishConfigResultTest {
         assertTrue(result.isSuccess());
         assertEquals("published-md5-hash", result.getMd5());
     }
-
+    
     @Test
     @DisplayName("test fail factory method")
     void testFailFactoryMethod() {
@@ -61,7 +61,7 @@ class PublishConfigResultTest {
         assertEquals(403, result.getErrorCode());
         assertEquals("no permission", result.getErrorMessage());
     }
-
+    
     @Test
     @DisplayName("test getter and setter")
     void testGetterAndSetter() {
@@ -70,13 +70,13 @@ class PublishConfigResultTest {
         result.setErrorCode(0);
         result.setErrorMessage(null);
         result.setMd5("md5-hash");
-
+        
         assertTrue(result.isSuccess());
         assertEquals(0, result.getErrorCode());
         assertNull(result.getErrorMessage());
         assertEquals("md5-hash", result.getMd5());
     }
-
+    
     @Test
     @DisplayName("test toString")
     void testToString() {

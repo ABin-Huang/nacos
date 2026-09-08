@@ -30,14 +30,14 @@ import java.io.Serializable;
  * @since 3.3.0
  */
 public class PublishConfigResult implements Serializable {
-
+    
     private static final long serialVersionUID = 1L;
-
+    
     /**
      * Whether the publish was successful.
      */
     private boolean success;
-
+    
     /**
      * Error code when the publish failed.
      * 0 indicates success. Common values:
@@ -48,27 +48,27 @@ public class PublishConfigResult implements Serializable {
      * </ul>
      */
     private int errorCode;
-
+    
     /**
      * Detailed error message when the publish failed.
      */
     private String errorMessage;
-
+    
     /**
      * MD5 of the published content (returned by server on success).
      */
     private String md5;
-
+    
     public PublishConfigResult() {
     }
-
+    
     private PublishConfigResult(Builder builder) {
         this.success = builder.success;
         this.errorCode = builder.errorCode;
         this.errorMessage = builder.errorMessage;
         this.md5 = builder.md5;
     }
-
+    
     /**
      * Create a success result.
      *
@@ -77,7 +77,7 @@ public class PublishConfigResult implements Serializable {
     public static PublishConfigResult success() {
         return new Builder().success(true).build();
     }
-
+    
     /**
      * Create a success result with MD5.
      *
@@ -87,7 +87,7 @@ public class PublishConfigResult implements Serializable {
     public static PublishConfigResult success(String md5) {
         return new Builder().success(true).md5(md5).build();
     }
-
+    
     /**
      * Create a failure result.
      *
@@ -99,81 +99,81 @@ public class PublishConfigResult implements Serializable {
         return new Builder().success(false).errorCode(errorCode).errorMessage(errorMessage)
             .build();
     }
-
+    
     public boolean isSuccess() {
         return success;
     }
-
+    
     public void setSuccess(boolean success) {
         this.success = success;
     }
-
+    
     public int getErrorCode() {
         return errorCode;
     }
-
+    
     public void setErrorCode(int errorCode) {
         this.errorCode = errorCode;
     }
-
+    
     public String getErrorMessage() {
         return errorMessage;
     }
-
+    
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
     }
-
+    
     public String getMd5() {
         return md5;
     }
-
+    
     public void setMd5(String md5) {
         this.md5 = md5;
     }
-
+    
     @Override
     public String toString() {
         return "PublishConfigResult{success=" + success + ", errorCode=" + errorCode
             + ", errorMessage='" + errorMessage + "', md5='" + md5 + "'}";
     }
-
+    
     /**
      * Builder for {@link PublishConfigResult}.
      */
     public static final class Builder {
-
+        
         private boolean success;
-
+        
         private int errorCode;
-
+        
         private String errorMessage;
-
+        
         private String md5;
-
+        
         private Builder() {
         }
-
+        
         public Builder success(boolean success) {
             this.success = success;
             return this;
         }
-
+        
         public Builder errorCode(int errorCode) {
             this.errorCode = errorCode;
             return this;
         }
-
+        
         public Builder errorMessage(String errorMessage) {
             this.errorMessage = errorMessage;
             return this;
         }
-
+        
         public Builder md5(String md5) {
             this.md5 = md5;
             return this;
         }
-
+        
         public PublishConfigResult build() {
             return new PublishConfigResult(this);
         }

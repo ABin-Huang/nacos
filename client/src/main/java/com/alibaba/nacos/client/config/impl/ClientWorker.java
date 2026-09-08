@@ -593,7 +593,7 @@ public class ClientWorker implements Closeable {
         private final boolean hasLocalRepresentation;
         
         public LocalConfigContent(String content, String md5, String encryptedDataKey,
-                boolean hasLocalRepresentation) {
+            boolean hasLocalRepresentation) {
             this.content = content;
             this.md5 = md5;
             this.encryptedDataKey = encryptedDataKey;

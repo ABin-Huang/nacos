@@ -101,12 +101,13 @@ public class ConfigQueryRequestHandler
             
             // 304 Not-Modified: FormalHandler already skipped content read when MD5 matched.
             // Return 304 directly with metadata, equivalent to the post-read comparison path.
-            if (chainResponse.getStatus()
-                == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_MODIFIED) {
+            if (chainResponse
+                .getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_MODIFIED) {
                 String pullEvent = resolvePullEventType(chainResponse, request.getTag());
                 LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, clientIp,
                     chainResponse.getMd5(), TimeUtils.getCurrentTimeStr());
-                final long delayed304 = System.currentTimeMillis() - chainResponse.getLastModified();
+                final long delayed304 =
+                    System.currentTimeMillis() - chainResponse.getLastModified();
                 ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp,
                     chainResponse.getLastModified(), pullEvent,
                     ConfigTraceService.PULL_TYPE_OK, delayed304, clientIp, notify, "grpc");
@@ -124,7 +125,8 @@ public class ConfigQueryRequestHandler
                 String pullEvent = resolvePullEventType(chainResponse, request.getTag());
                 LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, clientIp,
                     chainResponse.getMd5(), TimeUtils.getCurrentTimeStr());
-                final long delayed304 = System.currentTimeMillis() - chainResponse.getLastModified();
+                final long delayed304 =
+                    System.currentTimeMillis() - chainResponse.getLastModified();
                 ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp,
                     chainResponse.getLastModified(), pullEvent,
                     ConfigTraceService.PULL_TYPE_OK, delayed304, clientIp, notify, "grpc");

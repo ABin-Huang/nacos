@@ -49,21 +49,21 @@ class ConfigQueryRequestTest extends BasedConfigRequestTest {
     void testIsNotify() {
         assertTrue(configQueryRequest.isNotify());
     }
-
+    
     @Test
     void testLocalMd5GetterAndSetter() {
         assertNull(configQueryRequest.getLocalMd5());
         configQueryRequest.setLocalMd5("test-local-md5-hash");
         assertEquals("test-local-md5-hash", configQueryRequest.getLocalMd5());
     }
-
+    
     @Test
     void testSerializeWithLocalMd5() throws JsonProcessingException {
         configQueryRequest.setLocalMd5("local-md5-123");
         String json = mapper.writeValueAsString(configQueryRequest);
         assertTrue(json.contains("\"localMd5\":\"local-md5-123\""));
     }
-
+    
     @Test
     void testDeserializeWithLocalMd5() throws JsonProcessingException {
         String json =
