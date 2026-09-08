@@ -120,6 +120,6 @@ class ConfigQueryChainResponseTest {
     void testConfigQueryStatusValues() {
         ConfigQueryChainResponse.ConfigQueryStatus[] values =
             ConfigQueryChainResponse.ConfigQueryStatus.values();
-        assertEquals(5, values.length);
+        assertEquals(6, values.length);
     }
 }
