@@ -60,10 +60,13 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -428,6 +431,123 @@ class ClientWorkerTest {
         assertNotNull(snapshot);
         assertEquals(content, snapshot.getContent());
         assertEquals(encryptedDataKey, snapshot.getEncryptedDataKey());
+    }
+    
+    @Test
+    void testAddTenantListenersWithContentAtomicUnderLatchInterleaving() throws Exception {
+        // Deterministic regression test through the real ClientWorker.addTenantListenersWithContent()
+        // production path with latch-controlled interleaving. A CacheData spy inserts a latch
+        // inside setEncryptedDataKey() so a concurrent reader can capture the state between
+        // the two setters IF the production path uses separate setters. If production uses
+        // atomic setConfigContentAndKey(), the spy method is never called and no interleaving
+        // is possible. The test asserts that any captured snapshot is either null (verifiedPair
+        // invalidated by individual setter) or a complete consistent pair (old or new version),
+        // never a mismatched content/key tuple.
+        Properties prop = new Properties();
+        ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
+        ConfigServerListManager agent = Mockito.mock(ConfigServerListManager.class);
+        Mockito.lenient().when(agent.getTenant()).thenReturn("");
+        Mockito.lenient().when(agent.getName()).thenReturn("test-agent");
+        
+        final NacosClientProperties nacosClientProperties =
+            NacosClientProperties.PROTOTYPE.derive(prop);
+        ClientWorker clientWorker = new ClientWorker(filter, agent, nacosClientProperties);
+        
+        String dataId = "test-data-latch";
+        String group = "test-group";
+        String tenant = "";
+        String oldContent = "old-content-v1";
+        String oldKey = "old-key-v1";
+        String newContent = "new-content-v2";
+        String newKey = "new-key-v2";
+        
+        // Create and pre-populate the cache with an initial verified pair
+        CacheData cacheData = clientWorker.addCacheDataIfAbsent(dataId, group, tenant);
+        cacheData.setConfigContentAndKey(oldContent, oldKey);
+        
+        // Create a spy that inserts a latch after setEncryptedDataKey() to force interleaving.
+        // If production uses atomic setConfigContentAndKey(), this method is never called.
+        CacheData spyCache = Mockito.spy(cacheData);
+        CountDownLatch writerMidLatch = new CountDownLatch(1);
+        CountDownLatch readerDoneLatch = new CountDownLatch(1);
+        AtomicReference<CacheData.ConfigSnapshot> capturedSnapshot = new AtomicReference<>();
+        
+        // Use lenient stubbing because atomic setConfigContentAndKey() never calls
+        // setEncryptedDataKey(); the stub only triggers if production regresses to separate setters.
+        Mockito.lenient().doAnswer(invocation -> {
+            // Call the real method first (sets encryptedDataKey and verifiedPair=false)
+            Object result = invocation.callRealMethod();
+            // Signal that we're between the two setters
+            writerMidLatch.countDown();
+            // Wait for reader to finish capturing
+            readerDoneLatch.await(5, TimeUnit.SECONDS);
+            return result;
+        }).when(spyCache).setEncryptedDataKey(anyString());
+        
+        // Replace the cache in cacheMap with the spy via reflection
+        Field cacheMapField = ClientWorker.class.getDeclaredField("cacheMap");
+        cacheMapField.setAccessible(true);
+        AtomicReference<Map<String, CacheData>> cacheMapRef =
+            (AtomicReference<Map<String, CacheData>>) cacheMapField.get(clientWorker);
+        Map<String, CacheData> newMap = new HashMap<>(cacheMapRef.get());
+        newMap.put(GroupKey.getKeyTenant(dataId, group, tenant), spyCache);
+        cacheMapRef.set(newMap);
+        
+        // Start writer thread calling the real production method
+        Thread writerThread = new Thread(() -> {
+            try {
+                clientWorker.addTenantListenersWithContent(dataId, group, newContent, newKey,
+                    new ArrayList<>());
+            } catch (NacosException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        writerThread.start();
+        
+        // Wait for writer to reach mid-point (between setters), or timeout if atomic path
+        boolean interleavingOccurred = writerMidLatch.await(2, TimeUnit.SECONDS);
+        
+        if (interleavingOccurred) {
+            // Writer is between two setters - capture snapshot now (configLock is released
+            // between individual setters, so getConsistentSnapshot() can proceed)
+            capturedSnapshot.set(spyCache.getConsistentSnapshot());
+            // Allow writer to continue
+            readerDoneLatch.countDown();
+        } else {
+            // Atomic path - setConfigContentAndKey() never calls setEncryptedDataKey(),
+            // so writer already completed. Release latch to unblock (no-op if already done).
+            readerDoneLatch.countDown();
+        }
+        
+        writerThread.join(5000);
+        
+        // Verify final state is correct
+        CacheData finalCache = clientWorker.getCache(dataId, group, tenant);
+        assertEquals(newContent, finalCache.getContent());
+        assertEquals(newKey, finalCache.getEncryptedDataKey());
+        
+        // If interleaving occurred (production used separate setters), the captured snapshot
+        // must NOT be a mismatched pair. It must be either null (verifiedPair invalidated)
+        // or a complete consistent pair from one version.
+        if (interleavingOccurred && capturedSnapshot.get() != null) {
+            CacheData.ConfigSnapshot snap = capturedSnapshot.get();
+            boolean isOldPair = oldContent.equals(snap.getContent())
+                && oldKey.equals(snap.getEncryptedDataKey());
+            boolean isNewPair = newContent.equals(snap.getContent())
+                && newKey.equals(snap.getEncryptedDataKey());
+            assertTrue(isOldPair || isNewPair,
+                "Captured snapshot between setters must be a consistent pair (old or new), "
+                + "not mismatched: content=" + snap.getContent()
+                + ", key=" + snap.getEncryptedDataKey());
+        }
+        
+        // If interleaving occurred and individual setter correctly invalidated verifiedPair,
+        // the snapshot should be null. This is the expected behavior with the fix.
+        if (interleavingOccurred) {
+            assertNull(capturedSnapshot.get(),
+                "Individual setEncryptedDataKey() must invalidate verifiedPair so "
+                + "getConsistentSnapshot() returns null between setters");
+        }
     }
     
     @Test
