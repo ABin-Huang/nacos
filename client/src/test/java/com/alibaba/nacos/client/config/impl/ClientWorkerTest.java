@@ -526,9 +526,10 @@ class ClientWorkerTest {
         
         // === CORE ASSERTION: verify the worker used the atomic update API ===
         // This is what makes the test fail against the two-setter regression.
-        verify(spyCache, times(1)).setConfigContentAndKey(newContent, newKey);
-        verify(spyCache, never()).setEncryptedDataKey(anyString());
-        verify(spyCache, never()).setContent(anyString());
+        // Use qualified Mockito.verify() to avoid static import loss in merge refs.
+        Mockito.verify(spyCache, times(1)).setConfigContentAndKey(newContent, newKey);
+        Mockito.verify(spyCache, never()).setEncryptedDataKey(anyString());
+        Mockito.verify(spyCache, never()).setContent(anyString());
         
         // Concurrency contract: if interleaving occurred (separate setters), the captured
         // snapshot must be null (verifiedPair invalidated) or a complete consistent pair.
