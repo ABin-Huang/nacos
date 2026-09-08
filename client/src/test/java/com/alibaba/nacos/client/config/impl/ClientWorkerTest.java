@@ -436,13 +436,11 @@ class ClientWorkerTest {
     @Test
     void testAddTenantListenersWithContentAtomicUnderLatchInterleaving() throws Exception {
         // Deterministic regression test through the real ClientWorker.addTenantListenersWithContent()
-        // production path with latch-controlled interleaving. A CacheData spy inserts a latch
-        // inside setEncryptedDataKey() so a concurrent reader can capture the state between
-        // the two setters IF the production path uses separate setters. If production uses
-        // atomic setConfigContentAndKey(), the spy method is never called and no interleaving
-        // is possible. The test asserts that any captured snapshot is either null (verifiedPair
-        // invalidated by individual setter) or a complete consistent pair (old or new version),
-        // never a mismatched content/key tuple.
+        // production path. Verifies that the worker uses atomic setConfigContentAndKey() and
+        // NEVER calls individual setEncryptedDataKey() or setContent() for this update path.
+        // This test FAILS if production regresses to the old two-setter implementation.
+        // A latch is also used to cover the concurrency contract: if separate setters were used,
+        // a concurrent reader between them must never see a mismatched content/key pair.
         Properties prop = new Properties();
         ConfigFilterChainManager filter = new ConfigFilterChainManager(new Properties());
         ConfigServerListManager agent = Mockito.mock(ConfigServerListManager.class);
@@ -461,7 +459,7 @@ class ClientWorkerTest {
         String newContent = "new-content-v2";
         String newKey = "new-key-v2";
         
-        // Create and pre-populate the cache with an initial verified pair
+        // Create and pre-populate the cache with an initial verified pair (before spy creation)
         CacheData cacheData = clientWorker.addCacheDataIfAbsent(dataId, group, tenant);
         cacheData.setConfigContentAndKey(oldContent, oldKey);
         
@@ -526,9 +524,14 @@ class ClientWorkerTest {
         assertEquals(newContent, finalCache.getContent());
         assertEquals(newKey, finalCache.getEncryptedDataKey());
         
-        // If interleaving occurred (production used separate setters), the captured snapshot
-        // must NOT be a mismatched pair. It must be either null (verifiedPair invalidated)
-        // or a complete consistent pair from one version.
+        // === CORE ASSERTION: verify the worker used the atomic update API ===
+        // This is what makes the test fail against the two-setter regression.
+        verify(spyCache, times(1)).setConfigContentAndKey(newContent, newKey);
+        verify(spyCache, never()).setEncryptedDataKey(anyString());
+        verify(spyCache, never()).setContent(anyString());
+        
+        // Concurrency contract: if interleaving occurred (separate setters), the captured
+        // snapshot must be null (verifiedPair invalidated) or a complete consistent pair.
         if (interleavingOccurred && capturedSnapshot.get() != null) {
             CacheData.ConfigSnapshot snap = capturedSnapshot.get();
             boolean isOldPair = oldContent.equals(snap.getContent())
@@ -539,14 +542,6 @@ class ClientWorkerTest {
                 "Captured snapshot between setters must be a consistent pair (old or new), "
                 + "not mismatched: content=" + snap.getContent()
                 + ", key=" + snap.getEncryptedDataKey());
-        }
-        
-        // If interleaving occurred and individual setter correctly invalidated verifiedPair,
-        // the snapshot should be null. This is the expected behavior with the fix.
-        if (interleavingOccurred) {
-            assertNull(capturedSnapshot.get(),
-                "Individual setEncryptedDataKey() must invalidate verifiedPair so "
-                + "getConsistentSnapshot() returns null between setters");
         }
     }
     
