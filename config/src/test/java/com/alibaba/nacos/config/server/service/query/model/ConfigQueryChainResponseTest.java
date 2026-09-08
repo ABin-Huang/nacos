@@ -18,11 +18,14 @@ package com.alibaba.nacos.config.server.service.query.model;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigQueryChainResponseTest {
     
@@ -121,5 +124,9 @@ class ConfigQueryChainResponseTest {
         ConfigQueryChainResponse.ConfigQueryStatus[] values =
             ConfigQueryChainResponse.ConfigQueryStatus.values();
         assertEquals(6, values.length);
+        // Verify CONFIG_NOT_MODIFIED (introduced for 304 conditional GET) is present
+        assertTrue(Arrays.asList(values).contains(
+            ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_MODIFIED),
+            "CONFIG_NOT_MODIFIED must be present for 304 conditional GET");
     }
 }
