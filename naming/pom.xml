@@ -95,6 +95,13 @@
             <artifactId>mysql-connector-j</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <!-- DNS server support for issue #50 -->
+        <dependency>
+            <groupId>dnsjava</groupId>
+            <artifactId>dnsjava</artifactId>
+            <version>3.5.2</version>
+        </dependency>
         
         <!-- log -->
         <!-- log4j通过slf4j来代理 -->
